@@ -5,7 +5,10 @@ const { verifyFirebaseToken, requireAdmin } = require('../middleware/authMiddlew
 
 // ===== ADMIN ROUTES =====
 
-// ดูรายการหอพักทั้งหมด
+// ดูรายการหอพักทั้งหมด (root endpoint สำหรับ /api/admin/submissions)
+router.get('/', verifyFirebaseToken, requireAdmin, adminDormitoryController.getAllDormitories);
+
+// ดูรายการหอพักทั้งหมด (alias)
 router.get('/all', verifyFirebaseToken, requireAdmin, adminDormitoryController.getAllDormitories);
 
 // ดูรายการหอพักที่รอการอนุมัติ

@@ -1,5 +1,5 @@
 // ===== ปรับปรุงสำหรับระบบใหม่ =====
-// ใช้ตาราง approved_dormitories แทน dormitories เก่า
+// ใช้ตาราง dormitories (เดิมชื่อ raw_submissions)
 // ระบบใหม่ไม่มี owner functions, เฉพาะ public API
 
 const pool = require("../db");
@@ -21,8 +21,8 @@ exports.searchDormNames = async (req, res) => {
 
     const sql = `
       SELECT dorm_id, dorm_name
-      FROM approved_dormitories
-      WHERE status = 'active'
+      FROM dormitories
+      WHERE approval_status = 'approved'
         AND dorm_name ILIKE $1
       ORDER BY dorm_name
       LIMIT $2
@@ -89,9 +89,9 @@ exports.getDormitoryById = async (req, res) => {
       SELECT 
         d.*,
         z.zone_name
-      FROM approved_dormitories d
+      FROM dormitories d
       LEFT JOIN zones z ON d.zone_id = z.zone_id
-      WHERE d.dorm_id = $1 AND d.status = 'active'
+      WHERE d.dorm_id = $1 AND d.approval_status = 'approved'
     `;
 
     const dormResult = await pool.query(dormQuery, [dormId]);
@@ -168,23 +168,25 @@ exports.getRecommendedDormitories = async (req, res) => {
         -- คำนวณ recommendation score แบบง่าย
         (
           CASE 
-            WHEN d.min_price IS NOT NULL AND d.min_price > 0 
-            THEN GREATEST(0, (10000 - d.min_price) / 1000) * 0.5
+            WHEN d.monthly_price IS NOT NULL AND d.monthly_price > 0 
+            THEN GREATEST(0, (10000 - d.monthly_price) / 1000) * 0.5
+            WHEN d.daily_price IS NOT NULL AND d.daily_price > 0
+            THEN GREATEST(0, (500 - d.daily_price) / 100) * 0.5
             ELSE 0 
           END +
-          COALESCE((SELECT COUNT(*) FROM dormitory_amenities WHERE dorm_id = d.dorm_id AND is_available = true), 0) * 0.3 +
+          COALESCE((SELECT COUNT(*) FROM dormitory_amenity_mapping WHERE dorm_id = d.dorm_id), 0) * 0.3 +
           COALESCE((SELECT COUNT(*) FROM dormitory_images WHERE dorm_id = d.dorm_id), 0) * 0.2
         ) AS recommendation_score,
-        (SELECT COUNT(*) FROM dormitory_amenities WHERE dorm_id = d.dorm_id AND is_available = true) AS amenities_count,
+        (SELECT COUNT(*) FROM dormitory_amenity_mapping WHERE dorm_id = d.dorm_id) AS amenities_count,
         (SELECT COUNT(*) FROM dormitory_images WHERE dorm_id = d.dorm_id) AS images_count
-      FROM approved_dormitories d
+      FROM dormitories d
       LEFT JOIN zones z ON d.zone_id = z.zone_id
-      WHERE d.status = 'active'
+      WHERE d.approval_status = 'approved'
       ORDER BY 
         recommendation_score DESC,
         amenities_count DESC,
         images_count DESC,
-        d.created_at DESC`;
+        d.submitted_date DESC`;
     const values = [];
     if (limit) {
       values.push(parseInt(limit, 10));
@@ -214,9 +216,9 @@ exports.getLatestDormitories = async (req, res) => {
         ) AS main_image_url,
         0 AS avg_rating,
         0 AS review_count
-      FROM approved_dormitories d
+      FROM dormitories d
       LEFT JOIN zones z ON d.zone_id = z.zone_id
-      WHERE d.status = 'active'
+      WHERE d.approval_status = 'approved'
       ORDER BY d.updated_at DESC NULLS LAST`;
     const values = [];
     if (limit) {
@@ -246,10 +248,10 @@ exports.getAllApprovedDormitories = async (req, res) => {
         ) AS main_image_url,
         0 AS avg_rating,
         0 AS review_count
-      FROM approved_dormitories d
+      FROM dormitories d
       LEFT JOIN zones z ON d.zone_id = z.zone_id
-      WHERE d.status = 'active'
-      ORDER BY d.created_at DESC
+      WHERE d.approval_status = 'approved'
+      ORDER BY d.submitted_date DESC
     `;
 
     const result = await pool.query(query);

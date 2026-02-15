@@ -63,19 +63,19 @@ async function requireAdmin(req, res, next) {
   }
 
   try {
-    // ตรวจสอบสถานะแอดมินจากฐานข้อมูล
+    // ตรวจสอบสถานะแอดมินจากตาราง admins
     const result = await pool.query(
-      'SELECT member_type FROM users WHERE firebase_uid = $1',
+      'SELECT admin_id, is_active FROM admins WHERE firebase_uid = $1',
       [req.user.uid]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found in database.' });
+      return res.status(404).json({ error: 'Admin not found in database.' });
     }
 
-    const user = result.rows[0];
-    if (user.member_type !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden: Admin privileges required.' });
+    const admin = result.rows[0];
+    if (!admin.is_active) {
+      return res.status(403).json({ error: 'Forbidden: Admin account is inactive.' });
     }
 
     // ถ้าเป็นแอดมิน ให้ดำเนินการต่อ

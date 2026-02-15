@@ -5,21 +5,21 @@ const pool = require("../db");
 exports.getAllDormitories = async (req, res) => {
   try {
     const query = `
-            SELECT 
-                d.dorm_id,
-                d.dorm_name,
-                d.address,
-                d.approval_status,
-                d.created_date AS submitted_date,
-                z.zone_name,
-                u.username AS owner_username,
-                u.display_name AS owner_name,
-                (SELECT image_url FROM dormitory_images WHERE dorm_id = d.dorm_id AND is_primary = true LIMIT 1) as main_image_url
-            FROM dormitories d
-            LEFT JOIN zones z ON d.zone_id = z.zone_id
-            LEFT JOIN users u ON d.owner_id = u.id
-            ORDER BY d.created_date DESC
-        `;
+      SELECT 
+        d.dorm_id,
+        d.dorm_name,
+        d.address,
+        d.approval_status,
+        d.submitted_date,
+        d.monthly_price,
+        d.daily_price,
+        d.room_type,
+        z.zone_name,
+        (SELECT image_url FROM dormitory_images WHERE dorm_id = d.dorm_id AND is_primary = true LIMIT 1) as main_image_url
+      FROM dormitories d
+      LEFT JOIN zones z ON d.zone_id = z.zone_id
+      ORDER BY d.submitted_date DESC
+    `;
 
     const result = await pool.query(query);
     res.json(result.rows);
@@ -127,22 +127,13 @@ exports.getDormitoryDetailsByAdmin = async (req, res) => {
   try {
     const { dormId } = req.params;
     
-    // 1. ข้อมูลพื้นฐานหอพัก
+    // 1. ข้อมูลพื้นฐานหอพัก (ไม่กรอง approval_status เพื่อให้แอดมินดูได้ทุกสถานะ)
     const dormQuery = `
       SELECT 
         d.*,
-        z.zone_name,
-        u.username AS owner_username,
-        u.display_name AS owner_name,
-        u.email AS owner_email,
-        u.phone_number AS owner_phone,
-        u.secondary_phone AS owner_secondary_phone,
-        u.line_id AS owner_line_id,
-        u.manager_name AS owner_manager_name,
-        u.photo_url AS owner_photo_url
+        z.zone_name
       FROM dormitories d
       LEFT JOIN zones z ON d.zone_id = z.zone_id
-      LEFT JOIN users u ON d.owner_id = u.id
       WHERE d.dorm_id = $1
     `;
     
@@ -159,61 +150,43 @@ exports.getDormitoryDetailsByAdmin = async (req, res) => {
       SELECT image_id, image_url, is_primary
       FROM dormitory_images 
       WHERE dorm_id = $1 
-      ORDER BY is_primary DESC, image_id ASC
+      ORDER BY is_primary DESC, upload_date DESC
     `;
     const imagesResult = await pool.query(imagesQuery, [dormId]);
     
-    // 3. ประเภทห้อง
-    const roomTypesQuery = `
-      SELECT 
-        rt.*,
-        0 as total_rooms,
-        0 as available_rooms
-      FROM room_types rt
-      WHERE rt.dorm_id = $1
-      ORDER BY rt.room_type_id
-    `;
-    const roomTypesResult = await pool.query(roomTypesQuery, [dormId]);
-    
-    // 4. สิ่งอำนวยความสะดวก
+    // 3. สิ่งอำนวยความสะดวก (ใช้ระบบใหม่ผ่าน mapping table)
     const amenitiesQuery = `
       SELECT 
-        da.dorm_amenity_id,
         da.amenity_id,
-        da.amenity_name,
-        da.location_type,
-        da.is_available
-      FROM dormitory_amenities da
-      WHERE da.dorm_id = $1
-      ORDER BY da.location_type, da.amenity_name
+        da.amenity_name
+      FROM dormitory_amenity_mapping dam
+      INNER JOIN dormitory_amenities da ON dam.amenity_id = da.amenity_id
+      WHERE dam.dorm_id = $1
+      ORDER BY da.amenity_name
     `;
     const amenitiesResult = await pool.query(amenitiesQuery, [dormId]);
     
+    // 4. รีวิว (ยังไม่มีในระบบใหม่)
+    const reviews = [];
     
-    // จัดกลุ่มสิ่งอำนวยความสะดวก
-    const groupedAmenities = {
-      'ภายใน': [],
-      'ภายนอก': [],
-      'common': []
+    // 5. คะแนนเฉลี่ย (ยังไม่มีในระบบใหม่)
+    const rating_summary = {
+      review_count: 0,
+      average_rating: 0
     };
     
-    amenitiesResult.rows.forEach(amenity => {
-      const locationType = amenity.location_type || 'ภายใน';
-      if (groupedAmenities[locationType]) {
-        groupedAmenities[locationType].push(amenity);
-      }
-    });
-    
-    res.json({
-      dormitory: {
-        ...dormitory,
-        latitude: dormitory.latitude ? Number(dormitory.latitude) : null,
-        longitude: dormitory.longitude ? Number(dormitory.longitude) : null,
-      },
+    // รวมข้อมูลทั้งหมด
+    const response = {
+      ...dormitory,
+      latitude: dormitory.latitude ? Number(dormitory.latitude) : null,
+      longitude: dormitory.longitude ? Number(dormitory.longitude) : null,
       images: imagesResult.rows,
-      room_types: roomTypesResult.rows,
-      amenities: groupedAmenities
-    });
+      amenities: amenitiesResult.rows,
+      reviews: reviews,
+      rating_summary: rating_summary,
+    };
+    
+    res.json(response);
     
   } catch (error) {
     console.error("Error fetching dormitory details for admin:", error);

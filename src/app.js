@@ -41,8 +41,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/api/auth', authRoutes); // เพิ่ม route สำหรับแก้ปัญหา /api/api/ ที่ Frontend เรียกผิด
 app.use('/api/dormitories', dormitoryRoutes); // Public API สำหรับดูหอพัก
 app.use('/api/zones', zoneRoutes); // Public API สำหรับดูโซน
+app.use('/api/submissions', submissionRoutes); // Public API สำหรับส่งข้อมูลหอพัก
 app.use('/api/admin/dormitories', adminDormitoryRoutes); // Admin API
-app.use('/api/submissions', submissionRoutes); // Public Form + Admin Management
+app.use('/api/admin/submissions', adminDormitoryRoutes); // Alias: submissions = dormitories ที่รออนุมัติ
 
 // ===== Routes ที่ไม่ใช้แล้วในระบบใหม่ =====
 /*

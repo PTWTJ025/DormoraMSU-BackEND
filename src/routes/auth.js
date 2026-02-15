@@ -8,6 +8,9 @@ const { verifyFirebaseToken } = require('../middleware/authMiddleware');
 // Route สำหรับการเข้าสู่ระบบแอดมิน (Firebase)
 router.post('/admin-login', verifyFirebaseToken, authController.adminLogin);
 
+// Route สำหรับดึงข้อมูลแอดมินที่ login อยู่
+router.get('/admin/me', verifyFirebaseToken, authController.getAdminProfile);
+
 // Route สำหรับตรวจสอบความถูกต้องของ token
 router.get('/verify-token', verifyFirebaseToken, authController.verifyToken);
 

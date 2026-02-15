@@ -37,6 +37,7 @@ exports.adminLogin = async (req, res) => {
       email: admin.email,
       displayName: admin.display_name,
       photoURL: admin.photo_url || null,
+      memberType: 'admin', // หน้าบ้านใช้ memberType
       role: 'admin',
       lastLogin: admin.last_login
     };
@@ -69,6 +70,41 @@ exports.verifyToken = async (req, res) => {
   } catch (error) {
     console.error('Error in token verification endpoint:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์', error: error.message });
+  }
+};
+
+// ดึงข้อมูลแอดมินที่ login อยู่
+exports.getAdminProfile = async (req, res) => {
+  try {
+    const firebase_uid = req.user.uid;
+
+    // ดึงข้อมูลแอดมิน
+    const admin = await userService.getAdminByFirebaseUid(firebase_uid);
+
+    if (!admin) {
+      return res.status(404).json({ message: 'ไม่พบข้อมูลแอดมินในระบบ' });
+    }
+
+    if (!admin.is_active) {
+      return res.status(403).json({ message: 'บัญชีแอดมินถูกปิดใช้งาน' });
+    }
+
+    // ส่งข้อมูลแอดมินกลับไป
+    const adminProfile = {
+      uid: admin.firebase_uid,
+      username: admin.username,
+      email: admin.email,
+      displayName: admin.display_name,
+      photoURL: admin.photo_url || null,
+      memberType: 'admin', // หน้าบ้านใช้ memberType
+      role: 'admin',
+      lastLogin: admin.last_login
+    };
+
+    res.status(200).json(adminProfile);
+  } catch (error) {
+    console.error('Get admin profile error:', error);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลแอดมิน', error: error.message });
   }
 };
 
