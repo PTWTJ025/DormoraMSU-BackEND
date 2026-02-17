@@ -2,7 +2,7 @@
 // ใช้ตาราง dormitories (เดิมชื่อ raw_submissions)
 // ระบบใหม่ไม่มี owner functions, เฉพาะ public API
 
-const pool = require("../db");
+const supabase = require("../db");
 
 // ===== Public API Functions (ยังใช้ได้) =====
 
@@ -50,9 +50,17 @@ exports.searchDormNames = async (req, res) => {
 // ดึงรายการโซนทั้งหมด
 exports.getAllZones = async (req, res) => {
   try {
-    const query = "SELECT zone_id, zone_name FROM zones WHERE is_active = true ORDER BY zone_name";
-    const result = await pool.query(query);
-    res.json(result.rows);
+    const { data, error } = await supabase
+      .from('zones')
+      .select('zone_id, zone_name')
+      .eq('is_active', true)
+      .order('zone_name');
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
   } catch (error) {
     console.error("Error fetching zones:", error);
     res.status(500).json({ message: "Internal Server Error", error: error.message });
@@ -237,26 +245,31 @@ exports.getLatestDormitories = async (req, res) => {
 // ดึงหอพักทั้งหมดที่อนุมัติแล้ว (สำหรับ public)
 exports.getAllApprovedDormitories = async (req, res) => {
   try {
-    const query = `
-      SELECT 
-        d.*, 
-        z.zone_name, 
-        (
-          SELECT image_url FROM dormitory_images
-          WHERE dorm_id = d.dorm_id
-          ORDER BY is_primary DESC, upload_date DESC, image_id ASC
-          LIMIT 1
-        ) AS main_image_url,
-        0 AS avg_rating,
-        0 AS review_count
-      FROM dormitories d
-      LEFT JOIN zones z ON d.zone_id = z.zone_id
-      WHERE d.approval_status = 'approved'
-      ORDER BY d.submitted_date DESC
-    `;
+    const { data, error } = await supabase
+      .from('dormitories')
+      .select(`
+        *,
+        zones:zone_id(zone_name),
+        dormitory_images!left(image_url, is_primary)
+      `)
+      .eq('approval_status', 'approved')
+      .order('submitted_date', { ascending: false });
 
-    const result = await pool.query(query);
-    res.json(result.rows);
+    if (error) {
+      throw error;
+    }
+
+    // จัดรูปแบบข้อมูลให้เหมือนเดิม
+    const formattedData = data.map(dorm => ({
+      ...dorm,
+      zone_name: dorm.zones?.zone_name || null,
+      main_image_url: dorm.dormitory_images?.find(img => img.is_primary)?.image_url || 
+                      dorm.dormitory_images?.[0]?.image_url || null,
+      avg_rating: 0,
+      review_count: 0
+    }));
+
+    res.json(formattedData);
   } catch (error) {
     console.error("Error fetching all approved dormitories:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูลหอพักทั้งหมด", error: error.message });
