@@ -50,17 +50,9 @@ exports.searchDormNames = async (req, res) => {
 // ดึงรายการโซนทั้งหมด
 exports.getAllZones = async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('zones')
-      .select('zone_id, zone_name')
-      .eq('is_active', true)
-      .order('zone_name');
-
-    if (error) {
-      throw error;
-    }
-
-    res.json(data);
+    const query = "SELECT zone_id, zone_name FROM zones WHERE is_active = true ORDER BY zone_name";
+    const result = await pool.query(query);
+    res.json(result.rows);
   } catch (error) {
     console.error("Error fetching zones:", error);
     res.status(500).json({ message: "Internal Server Error", error: error.message });
