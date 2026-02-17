@@ -259,7 +259,7 @@ exports.getAllApprovedDormitories = async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error("Error fetching all approved dormitories:", error);
-    res.status(500).json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูลหอพักทั้งหมด" });
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูลหอพักทั้งหมด", error: error.message });
   }
 };
 
