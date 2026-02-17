@@ -2,7 +2,7 @@
 // ใช้ตาราง dormitories (เดิมชื่อ raw_submissions)
 // ระบบใหม่ไม่มี owner functions, เฉพาะ public API
 
-const supabase = require("../db");
+const pool = require("../db");
 
 // ===== Public API Functions (ยังใช้ได้) =====
 
@@ -28,34 +28,39 @@ exports.searchDormNames = async (req, res) => {
       LIMIT $2
     `;
 
-    const values = [
-      `%${rawQuery}%`,
-      limit
-    ];
+    const values = [`%${rawQuery}%`, limit];
 
     const result = await pool.query(sql, values);
 
-    const items = result.rows.map(r => ({
+    const items = result.rows.map((r) => ({
       id: r.dorm_id,
-      name: r.dorm_name
+      name: r.dorm_name,
     }));
 
     res.json(items);
   } catch (error) {
-    console.error('Error searching dorm names:', error);
-    res.status(500).json({ message: 'เกิดข้อผิดพลาดในการค้นหาชื่อหอพัก', error: error.message });
+    console.error("Error searching dorm names:", error);
+    res
+      .status(500)
+      .json({
+        message: "เกิดข้อผิดพลาดในการค้นหาชื่อหอพัก",
+        error: error.message,
+      });
   }
 };
 
 // ดึงรายการโซนทั้งหมด
 exports.getAllZones = async (req, res) => {
   try {
-    const query = "SELECT zone_id, zone_name FROM zones WHERE is_active = true ORDER BY zone_name";
+    const query =
+      "SELECT zone_id, zone_name FROM zones WHERE is_active = true ORDER BY zone_name";
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
     console.error("Error fetching zones:", error);
-    res.status(500).json({ message: "Internal Server Error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
 
@@ -68,14 +73,16 @@ exports.getAllAmenities = async (req, res) => {
       ORDER BY amenity_name
     `;
     const result = await pool.query(query);
-    
+
     // ส่งกลับเป็น array ของชื่อสิ่งอำนวยความสะดวก
-    const amenities = result.rows.map(row => row.amenity_name);
-    
+    const amenities = result.rows.map((row) => row.amenity_name);
+
     res.json(amenities);
   } catch (error) {
     console.error("Error fetching amenities:", error);
-    res.status(500).json({ message: "Internal Server Error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
 
@@ -129,7 +136,7 @@ exports.getDormitoryById = async (req, res) => {
     // 5. คะแนนเฉลี่ย (ยังไม่มีในระบบใหม่)
     const rating_summary = {
       review_count: 0,
-      average_rating: 0
+      average_rating: 0,
     };
 
     // รวมข้อมูลทั้งหมด
@@ -146,7 +153,9 @@ exports.getDormitoryById = async (req, res) => {
     res.json(response);
   } catch (error) {
     console.error("Error fetching dormitory details:", error);
-    res.status(500).json({ message: "Internal Server Error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
 
@@ -197,7 +206,9 @@ exports.getRecommendedDormitories = async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error("Error fetching recommended dormitories:", error);
-    res.status(500).json({ message: "Internal Server Error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
 
@@ -230,41 +241,43 @@ exports.getLatestDormitories = async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error("Error fetching latest dormitories:", error);
-    res.status(500).json({ message: "Internal Server Error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
 
 // ดึงหอพักทั้งหมดที่อนุมัติแล้ว (สำหรับ public)
 exports.getAllApprovedDormitories = async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('dormitories')
-      .select(`
-        *,
-        zones:zone_id(zone_name),
-        dormitory_images!left(image_url, is_primary)
-      `)
-      .eq('approval_status', 'approved')
-      .order('submitted_date', { ascending: false });
+    const query = `
+      SELECT 
+        d.*, 
+        z.zone_name, 
+        (
+          SELECT image_url FROM dormitory_images
+          WHERE dorm_id = d.dorm_id
+          ORDER BY is_primary DESC, upload_date DESC, image_id ASC
+          LIMIT 1
+        ) AS main_image_url,
+        0 AS avg_rating,
+        0 AS review_count
+      FROM dormitories d
+      LEFT JOIN zones z ON d.zone_id = z.zone_id
+      WHERE d.approval_status = 'approved'
+      ORDER BY d.submitted_date DESC
+    `;
 
-    if (error) {
-      throw error;
-    }
-
-    // จัดรูปแบบข้อมูลให้เหมือนเดิม
-    const formattedData = data.map(dorm => ({
-      ...dorm,
-      zone_name: dorm.zones?.zone_name || null,
-      main_image_url: dorm.dormitory_images?.find(img => img.is_primary)?.image_url || 
-                      dorm.dormitory_images?.[0]?.image_url || null,
-      avg_rating: 0,
-      review_count: 0
-    }));
-
-    res.json(formattedData);
+    const result = await pool.query(query);
+    res.json(result.rows);
   } catch (error) {
     console.error("Error fetching all approved dormitories:", error);
-    res.status(500).json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูลหอพักทั้งหมด", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "เกิดข้อผิดพลาดในการดึงข้อมูลหอพักทั้งหมด",
+        error: error.message,
+      });
   }
 };
 
@@ -282,7 +295,9 @@ exports.getDormitoryImages = async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error("Error fetching dormitory images:", error);
-    res.status(500).json({ message: "Internal Server Error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
 
@@ -313,20 +328,23 @@ exports.compareDormitories = async (req, res) => {
   try {
     const { dormIds, ids } = req.query; // รองรับทั้ง dormIds และ ids
     const queryParam = dormIds || ids; // ใช้ dormIds ก่อน ถ้าไม่มีใช้ ids
-    
+
     if (!queryParam) {
       return res.status(400).json({ message: "กรุณาระบุ dormIds หรือ ids" });
     }
-    
+
     // แปลง string เป็น array of integers
-    const idsArray = queryParam.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-    
+    const idsArray = queryParam
+      .split(",")
+      .map((id) => parseInt(id.trim()))
+      .filter((id) => !isNaN(id));
+
     if (idsArray.length === 0) {
       return res.status(400).json({ message: "dormIds/ids ไม่ถูกต้อง" });
     }
-    
-    console.log('🔍 [compareDormitories] Comparing dormitories:', idsArray);
-    
+
+    console.log("🔍 [compareDormitories] Comparing dormitories:", idsArray);
+
     // Query ข้อมูลหอพักทั้งหมดที่ต้องการเปรียบเทียบ (เฉพาะที่ approved)
     const dormQuery = `
       SELECT 
@@ -356,13 +374,13 @@ exports.compareDormitories = async (req, res) => {
       WHERE d.dorm_id = ANY($1) AND d.approval_status = 'approved'
       ORDER BY d.dorm_id
     `;
-    
+
     const dormResult = await pool.query(dormQuery, [idsArray]);
-    
+
     if (dormResult.rows.length === 0) {
       return res.status(404).json({ message: "ไม่พบข้อมูลหอพักที่ระบุ" });
     }
-    
+
     // Query amenities สำหรับแต่ละหอ
     const amenitiesQuery = `
       SELECT 
@@ -374,32 +392,35 @@ exports.compareDormitories = async (req, res) => {
       WHERE dam.dorm_id = ANY($1)
       ORDER BY dam.dorm_id, da.amenity_name
     `;
-    
+
     const amenitiesResult = await pool.query(amenitiesQuery, [idsArray]);
-    
+
     // จัดกลุ่ม amenities ตาม dorm_id
     const amenitiesByDorm = {};
-    amenitiesResult.rows.forEach(row => {
+    amenitiesResult.rows.forEach((row) => {
       if (!amenitiesByDorm[row.dorm_id]) {
         amenitiesByDorm[row.dorm_id] = [];
       }
       amenitiesByDorm[row.dorm_id].push({
         amenity_id: row.amenity_id,
-        amenity_name: row.amenity_name
+        amenity_name: row.amenity_name,
       });
     });
-    
+
     // รวมข้อมูลทั้งหมด
-    const response = dormResult.rows.map(dorm => ({
+    const response = dormResult.rows.map((dorm) => ({
       ...dorm,
       latitude: dorm.latitude ? Number(dorm.latitude) : null,
       longitude: dorm.longitude ? Number(dorm.longitude) : null,
-      amenities: amenitiesByDorm[dorm.dorm_id] || []
+      amenities: amenitiesByDorm[dorm.dorm_id] || [],
     }));
-    
-    console.log('✅ [compareDormitories] Returning', response.length, 'dormitories');
+
+    console.log(
+      "✅ [compareDormitories] Returning",
+      response.length,
+      "dormitories",
+    );
     res.json(response);
-    
   } catch (error) {
     console.error("Error comparing dormitories:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการเปรียบเทียบหอพัก" });
@@ -417,10 +438,10 @@ exports.filterDormitories = async (req, res) => {
       room_type,
       amenities, // array ของ amenity names
       limit = 50,
-      offset = 0
+      offset = 0,
     } = req.query;
 
-    console.log('🔍 [filterDormitories] Filter params:', req.query);
+    console.log("🔍 [filterDormitories] Filter params:", req.query);
 
     let whereConditions = ["d.approval_status = 'approved'"];
     let queryParams = [];
@@ -435,14 +456,15 @@ exports.filterDormitories = async (req, res) => {
 
     // กรองตามราคา
     if (min_price || max_price) {
-      const priceColumn = price_type === 'daily' ? 'daily_price' : 'monthly_price';
-      
+      const priceColumn =
+        price_type === "daily" ? "daily_price" : "monthly_price";
+
       if (min_price) {
         whereConditions.push(`d.${priceColumn} >= $${paramCount}`);
         queryParams.push(parseFloat(min_price));
         paramCount++;
       }
-      
+
       if (max_price) {
         whereConditions.push(`d.${priceColumn} <= $${paramCount}`);
         queryParams.push(parseFloat(max_price));
@@ -487,7 +509,7 @@ exports.filterDormitories = async (req, res) => {
     }
 
     // เพิ่ม WHERE clause
-    query += ` WHERE ${whereConditions.join(' AND ')}`;
+    query += ` WHERE ${whereConditions.join(" AND ")}`;
 
     // เพิ่ม ORDER BY
     query += ` ORDER BY d.submitted_date DESC`;
@@ -497,16 +519,21 @@ exports.filterDormitories = async (req, res) => {
     queryParams.push(parseInt(limit));
     queryParams.push(parseInt(offset));
 
-    console.log('📊 [filterDormitories] Executing query:', query);
-    console.log('📊 [filterDormitories] Query params:', queryParams);
+    console.log("📊 [filterDormitories] Executing query:", query);
+    console.log("📊 [filterDormitories] Query params:", queryParams);
 
     const result = await pool.query(query, queryParams);
-    
-    console.log('✅ [filterDormitories] Found', result.rows.length, 'dormitories');
+
+    console.log(
+      "✅ [filterDormitories] Found",
+      result.rows.length,
+      "dormitories",
+    );
     res.json(result.rows);
-    
   } catch (error) {
     console.error("Error filtering dormitories:", error);
-    res.status(500).json({ message: "เกิดข้อผิดพลาดในการกรองหอพัก", error: error.message });
+    res
+      .status(500)
+      .json({ message: "เกิดข้อผิดพลาดในการกรองหอพัก", error: error.message });
   }
 };
