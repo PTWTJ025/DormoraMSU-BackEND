@@ -1,23 +1,25 @@
 // src/db.js
-const { Pool } = require('pg');
+const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
-// Avoid printing secrets
+// ใช้ Supabase REST API แทน Direct Database Connection
+// เพื่อแก้ปัญหา IPv6 compatibility ใน Vercel
 
-if (!process.env.DATABASE_URL) {
-  console.error("Error: DATABASE_URL is not set in .env file.");
+const supabaseUrl = process.env.SUPABASE_URL || 'https://spismpgbkrpkhedbeevh.supabase.co';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseServiceKey) {
+  console.error("Error: SUPABASE_SERVICE_KEY is not set in .env file.");
   process.exit(1);
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+// สร้าง Supabase client ด้วย service role key (สำหรับ backend)
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
 });
 
-// Optional: you can add minimal health logs if needed
-
-pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
-  process.exit(-1);
-});
-
-module.exports = pool;
+// Export supabase client แทน pg pool
+module.exports = supabase;
