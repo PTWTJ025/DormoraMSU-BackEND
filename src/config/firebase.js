@@ -14,7 +14,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
     console.log('Project ID:', serviceAccount.project_id);
   } catch (error) {
     console.error('Error parsing FIREBASE_SERVICE_ACCOUNT_KEY environment variable:', error);
-    process.exit(1);
+    throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT_KEY format');
   }
 } else {
   // Fallback to file
@@ -28,7 +28,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
     console.error('Error loading Firebase service account key from file:', error);
     console.error('Attempted path:', path.resolve(process.cwd(), serviceAccountPath));
     console.error('Please set FIREBASE_SERVICE_ACCOUNT_KEY environment variable or provide the key file');
-    process.exit(1);
+    throw new Error('Firebase service account key not found');
   }
 }
 
