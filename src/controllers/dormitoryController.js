@@ -111,14 +111,15 @@ exports.getDormitoryById = async (req, res) => {
     `;
     const imagesResult = await pool.query(imagesQuery, [dormId]);
 
-    // 3. ดึงสิ่งอำนวยความสะดวกของหอพัก
+    // 3. ดึงสิ่งอำนวยความสะดวกของหอพัก (ผ่าน mapping table)
     const amenitiesQuery = `
       SELECT 
-        amenity_id,
-        amenity_name,
-        is_available
-      FROM dormitory_amenities
-      WHERE dorm_id = $1 AND is_available = true
+        da.amenity_id,
+        da.amenity_name
+      FROM dormitory_amenity_mapping dam
+      INNER JOIN dormitory_amenities da ON dam.amenity_id = da.amenity_id
+      WHERE dam.dorm_id = $1
+      ORDER BY da.amenity_name
     `;
     const amenitiesResult = await pool.query(amenitiesQuery, [dormId]);
 
@@ -301,3 +302,206 @@ exports.addRoomType = async (req, res) => { ... }
 exports.updateRoomType = async (req, res) => { ... }
 exports.deleteRoomType = async (req, res) => { ... }
 */
+
+// เปรียบเทียบหอพักหลายตัว (สำหรับคนทั่วไป)
+exports.compareDormitories = async (req, res) => {
+  try {
+    const { dormIds, ids } = req.query; // รองรับทั้ง dormIds และ ids
+    const queryParam = dormIds || ids; // ใช้ dormIds ก่อน ถ้าไม่มีใช้ ids
+    
+    if (!queryParam) {
+      return res.status(400).json({ message: "กรุณาระบุ dormIds หรือ ids" });
+    }
+    
+    // แปลง string เป็น array of integers
+    const idsArray = queryParam.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+    
+    if (idsArray.length === 0) {
+      return res.status(400).json({ message: "dormIds/ids ไม่ถูกต้อง" });
+    }
+    
+    console.log('🔍 [compareDormitories] Comparing dormitories:', idsArray);
+    
+    // Query ข้อมูลหอพักทั้งหมดที่ต้องการเปรียบเทียบ (เฉพาะที่ approved)
+    const dormQuery = `
+      SELECT 
+        d.dorm_id,
+        d.dorm_name,
+        d.address,
+        d.description,
+        d.latitude,
+        d.longitude,
+        d.zone_id,
+        z.zone_name,
+        d.monthly_price,
+        d.daily_price,
+        d.summer_price,
+        d.deposit,
+        d.room_type,
+        d.electricity_price,
+        d.water_price_type,
+        d.water_price,
+        d.contact_name,
+        d.contact_phone,
+        d.contact_email,
+        d.line_id,
+        (SELECT image_url FROM dormitory_images WHERE dorm_id = d.dorm_id AND is_primary = true LIMIT 1) as main_image_url
+      FROM dormitories d
+      LEFT JOIN zones z ON d.zone_id = z.zone_id
+      WHERE d.dorm_id = ANY($1) AND d.approval_status = 'approved'
+      ORDER BY d.dorm_id
+    `;
+    
+    const dormResult = await pool.query(dormQuery, [idsArray]);
+    
+    if (dormResult.rows.length === 0) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลหอพักที่ระบุ" });
+    }
+    
+    // Query amenities สำหรับแต่ละหอ
+    const amenitiesQuery = `
+      SELECT 
+        dam.dorm_id,
+        da.amenity_id,
+        da.amenity_name
+      FROM dormitory_amenity_mapping dam
+      INNER JOIN dormitory_amenities da ON dam.amenity_id = da.amenity_id
+      WHERE dam.dorm_id = ANY($1)
+      ORDER BY dam.dorm_id, da.amenity_name
+    `;
+    
+    const amenitiesResult = await pool.query(amenitiesQuery, [idsArray]);
+    
+    // จัดกลุ่ม amenities ตาม dorm_id
+    const amenitiesByDorm = {};
+    amenitiesResult.rows.forEach(row => {
+      if (!amenitiesByDorm[row.dorm_id]) {
+        amenitiesByDorm[row.dorm_id] = [];
+      }
+      amenitiesByDorm[row.dorm_id].push({
+        amenity_id: row.amenity_id,
+        amenity_name: row.amenity_name
+      });
+    });
+    
+    // รวมข้อมูลทั้งหมด
+    const response = dormResult.rows.map(dorm => ({
+      ...dorm,
+      latitude: dorm.latitude ? Number(dorm.latitude) : null,
+      longitude: dorm.longitude ? Number(dorm.longitude) : null,
+      amenities: amenitiesByDorm[dorm.dorm_id] || []
+    }));
+    
+    console.log('✅ [compareDormitories] Returning', response.length, 'dormitories');
+    res.json(response);
+    
+  } catch (error) {
+    console.error("Error comparing dormitories:", error);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในการเปรียบเทียบหอพัก" });
+  }
+};
+
+// กรองหอพักตามเงื่อนไข
+exports.filterDormitories = async (req, res) => {
+  try {
+    const {
+      zone_id,
+      min_price,
+      max_price,
+      price_type, // 'monthly' หรือ 'daily'
+      room_type,
+      amenities, // array ของ amenity names
+      limit = 50,
+      offset = 0
+    } = req.query;
+
+    console.log('🔍 [filterDormitories] Filter params:', req.query);
+
+    let whereConditions = ["d.approval_status = 'approved'"];
+    let queryParams = [];
+    let paramCount = 1;
+
+    // กรองตามโซน
+    if (zone_id) {
+      whereConditions.push(`d.zone_id = $${paramCount}`);
+      queryParams.push(parseInt(zone_id));
+      paramCount++;
+    }
+
+    // กรองตามราคา
+    if (min_price || max_price) {
+      const priceColumn = price_type === 'daily' ? 'daily_price' : 'monthly_price';
+      
+      if (min_price) {
+        whereConditions.push(`d.${priceColumn} >= $${paramCount}`);
+        queryParams.push(parseFloat(min_price));
+        paramCount++;
+      }
+      
+      if (max_price) {
+        whereConditions.push(`d.${priceColumn} <= $${paramCount}`);
+        queryParams.push(parseFloat(max_price));
+        paramCount++;
+      }
+    }
+
+    // กรองตามประเภทห้อง
+    if (room_type) {
+      whereConditions.push(`d.room_type = $${paramCount}`);
+      queryParams.push(room_type);
+      paramCount++;
+    }
+
+    // สร้าง base query
+    let query = `
+      SELECT DISTINCT
+        d.*, 
+        z.zone_name, 
+        (
+          SELECT image_url FROM dormitory_images
+          WHERE dorm_id = d.dorm_id
+          ORDER BY is_primary DESC, upload_date DESC, image_id ASC
+          LIMIT 1
+        ) AS main_image_url,
+        0 AS avg_rating,
+        0 AS review_count
+      FROM dormitories d
+      LEFT JOIN zones z ON d.zone_id = z.zone_id
+    `;
+
+    // ถ้ามีการกรองตาม amenities
+    if (amenities) {
+      const amenitiesArray = Array.isArray(amenities) ? amenities : [amenities];
+      query += `
+        INNER JOIN dormitory_amenity_mapping dam ON d.dorm_id = dam.dorm_id
+        INNER JOIN dormitory_amenities da ON dam.amenity_id = da.amenity_id
+      `;
+      whereConditions.push(`da.amenity_name = ANY($${paramCount})`);
+      queryParams.push(amenitiesArray);
+      paramCount++;
+    }
+
+    // เพิ่ม WHERE clause
+    query += ` WHERE ${whereConditions.join(' AND ')}`;
+
+    // เพิ่ม ORDER BY
+    query += ` ORDER BY d.submitted_date DESC`;
+
+    // เพิ่ม LIMIT และ OFFSET
+    query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    queryParams.push(parseInt(limit));
+    queryParams.push(parseInt(offset));
+
+    console.log('📊 [filterDormitories] Executing query:', query);
+    console.log('📊 [filterDormitories] Query params:', queryParams);
+
+    const result = await pool.query(query, queryParams);
+    
+    console.log('✅ [filterDormitories] Found', result.rows.length, 'dormitories');
+    res.json(result.rows);
+    
+  } catch (error) {
+    console.error("Error filtering dormitories:", error);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในการกรองหอพัก", error: error.message });
+  }
+};

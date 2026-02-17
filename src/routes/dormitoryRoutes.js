@@ -25,6 +25,12 @@ router.get("/recommended", dormitoryController.getRecommendedDormitories);
 // หอพักล่าสุด
 router.get("/latest", dormitoryController.getLatestDormitories);
 
+// เปรียบเทียบหอพักหลายตัว (ต้องอยู่ก่อน /:dormId)
+router.get("/compare", dormitoryController.compareDormitories);
+
+// กรองหอพัก (ต้องอยู่ก่อน /:dormId)
+router.get("/filter", dormitoryController.filterDormitories);
+
 // ดึงข้อมูลหอพักตาม ID
 router.get("/:dormId", dormitoryController.getDormitoryById);
 

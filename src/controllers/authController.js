@@ -14,7 +14,7 @@ exports.adminLogin = async (req, res) => {
     const firebase_uid = req.user.uid; // uid from verified token
 
     // ตรวจสอบว่าผู้ใช้มีสิทธิ์แอดมินหรือไม่
-    const admin = await userService.getAdminByFirebaseUid(firebase_uid);
+    let admin = await userService.getAdminByFirebaseUid(firebase_uid);
 
     if (!admin) {
       return res.status(404).json({ message: 'ไม่พบข้อมูลแอดมินในระบบ' });
@@ -25,10 +25,19 @@ exports.adminLogin = async (req, res) => {
     }
 
     // อัพเดท last_login
-    await pool.query(
-      'UPDATE admins SET last_login = NOW() WHERE admin_id = $1',
+    const updateResult = await pool.query(
+      `UPDATE admins 
+       SET last_login = NOW()
+       WHERE admin_id = $1
+       RETURNING *`,
       [admin.admin_id]
     );
+
+    admin = updateResult.rows[0];
+
+    // ใช้รูปจากฐานข้อมูล หรือสร้าง default avatar
+    const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(admin.display_name || admin.username)}&background=4F46E5&color=fff&size=200`;
+    const finalPhotoURL = admin.photo_url || defaultAvatar;
 
     // ส่งข้อมูลแอดมินกลับไป
     const adminProfile = {
@@ -36,11 +45,17 @@ exports.adminLogin = async (req, res) => {
       username: admin.username,
       email: admin.email,
       displayName: admin.display_name,
-      photoURL: admin.photo_url || null,
+      photoURL: finalPhotoURL,
       memberType: 'admin', // หน้าบ้านใช้ memberType
       role: 'admin',
       lastLogin: admin.last_login
     };
+
+    console.log('✅ [adminLogin] Admin profile:', {
+      username: admin.username,
+      photo_url_from_db: admin.photo_url,
+      finalPhotoURL: finalPhotoURL
+    });
 
     res.status(200).json(adminProfile);
   } catch (error) {
@@ -89,13 +104,17 @@ exports.getAdminProfile = async (req, res) => {
       return res.status(403).json({ message: 'บัญชีแอดมินถูกปิดใช้งาน' });
     }
 
+    // ใช้รูปจากฐานข้อมูล หรือสร้าง default avatar
+    const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(admin.display_name || admin.username)}&background=4F46E5&color=fff&size=200`;
+    const finalPhotoURL = admin.photo_url || defaultAvatar;
+
     // ส่งข้อมูลแอดมินกลับไป
     const adminProfile = {
       uid: admin.firebase_uid,
       username: admin.username,
       email: admin.email,
       displayName: admin.display_name,
-      photoURL: admin.photo_url || null,
+      photoURL: finalPhotoURL,
       memberType: 'admin', // หน้าบ้านใช้ memberType
       role: 'admin',
       lastLogin: admin.last_login
