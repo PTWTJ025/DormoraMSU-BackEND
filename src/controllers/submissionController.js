@@ -6,16 +6,17 @@ const supabaseStorage = require("../services/supabaseStorageService");
 
 // ===== PUBLIC FORM SUBMISSION =====
 
-// รับข้อมูลจากฟอร์มหน้าบ้าน
+// รับข้อมูลจากฟอร์มหน้าบ้าน (รับ JSON แทน FormData)
 exports.submitDormitory = async (req, res) => {
   const client = await pool.connect();
   
   try {
     await client.query('BEGIN');
 
-    // 1. ดึงข้อมูลจาก FormData
+    // 1. ดึงข้อมูลจาก JSON body (Frontend ส่ง JSON มาแล้ว)
     const {
       // Step 1: Basic Info
+      accommodation_type, // field ใหม่จาก Frontend
       dorm_name,
       address,
       zone_id,
@@ -30,10 +31,12 @@ exports.submitDormitory = async (req, res) => {
       room_type,
       monthly_price,
       daily_price,
+      term_price, // field ใหม่จาก Frontend (อาจจะ map ไป summer_price)
       summer_price,
       deposit,
       
       // Step 4: Utilities
+      electricity_price_type, // field ใหม่จาก Frontend
       electricity_price,
       water_price_type,
       water_price,
@@ -41,31 +44,38 @@ exports.submitDormitory = async (req, res) => {
       // Step 5: Location & Additional
       latitude,
       longitude,
-      amenities, // JSON string หรือ array
+      amenities, // array ของ amenity names
       dorm_description,
       description, // รองรับทั้ง description และ dorm_description
+      images, // array ของ image paths/URLs จาก Frontend (อัปโหลดไป dorm-drafts/ แล้ว)
       primary_image_index
     } = req.body;
 
     // ใช้ dorm_description หรือ description (รองรับทั้ง 2 แบบ)
     const finalDescription = dorm_description || description;
+    
+    // ใช้ term_price ถ้ามี หรือใช้ summer_price
+    const finalSummerPrice = term_price || summer_price;
 
-    console.log('📝 [submitDormitory] Received data:', {
+    console.log('📝 [submitDormitory] Received JSON data:', {
+      accommodation_type,
       dorm_name,
       address,
       zone_id,
       room_type,
       monthly_price,
       daily_price,
-      summer_price,
+      term_price,
+      summer_price: finalSummerPrice,
       deposit,
+      electricity_price_type,
       electricity_price,
       water_price_type,
       water_price,
       latitude,
       longitude,
       amenities: typeof amenities,
-      files_count: req.files?.length,
+      images_count: images?.length,
       primary_image_index,
       all_body_keys: Object.keys(req.body)
     });
@@ -97,11 +107,12 @@ exports.submitDormitory = async (req, res) => {
       errors.location = "กรุณาระบุพิกัดหอพักบนแผนที่";
     }
     
-    if (!req.files || req.files.length < 3) {
+    // ตรวจสอบ images array จาก JSON (Frontend ส่งมาเป็น array ของ paths/URLs)
+    if (!images || !Array.isArray(images) || images.length < 3) {
       errors.images = "กรุณาอัปโหลดรูปภาพอย่างน้อย 3 รูป";
     }
     
-    if (req.files && req.files.length > 20) {
+    if (images && images.length > 20) {
       errors.images = "อัปโหลดรูปภาพได้สูงสุด 20 รูป";
     }
 
@@ -141,7 +152,7 @@ exports.submitDormitory = async (req, res) => {
       room_type,
       monthly_price ? parseFloat(monthly_price) : null,
       daily_price ? parseFloat(daily_price) : null,
-      summer_price ? parseFloat(summer_price) : null,
+      finalSummerPrice ? parseFloat(finalSummerPrice) : null,
       deposit ? parseFloat(deposit) : null,
       electricity_price ? parseFloat(electricity_price) : null,
       water_price_type || null,
@@ -156,30 +167,37 @@ exports.submitDormitory = async (req, res) => {
 
     console.log('✅ [submitDormitory] Created dorm_id:', dorm_id);
 
-    // 4. Upload รูปภาพไป Supabase Storage
-    const uploadedImages = [];
+    // 4. ย้ายรูปภาพจาก dorm-drafts/ ไป {dormId}/ folder
+    // Frontend อัปโหลดรูปไป dorm-drafts/ ก่อน แล้ว Backend จะย้ายไป {dormId}/ หลังจากสร้าง dormitory
+    const movedImages = [];
     const primaryIndex = primary_image_index ? parseInt(primary_image_index) : 0;
 
-    for (let i = 0; i < req.files.length; i++) {
-      const file = req.files[i];
-      console.log(`📸 [submitDormitory] Uploading image ${i + 1}/${req.files.length}`);
+    for (let i = 0; i < images.length; i++) {
+      const imagePath = images[i]; // path หรือ URL จาก Frontend
+      console.log(`📸 [submitDormitory] Moving image ${i + 1}/${images.length} from dorm-drafts/ to dormitory ${dorm_id}`);
       
       try {
-        const imageUrl = await supabaseStorage.uploadImage(file);
+        // ย้ายรูปจาก dorm-drafts/ ไป {dormId}/
+        const imageUrl = await supabaseStorage.moveImageToDormitoryFolder(imagePath, dorm_id);
         
-        uploadedImages.push({
+        movedImages.push({
           url: imageUrl,
           is_primary: i === primaryIndex
         });
       } catch (error) {
-        console.error(`❌ [submitDormitory] Failed to upload image ${i}:`, error.message);
+        console.error(`❌ [submitDormitory] Failed to move image ${i}:`, error.message);
+        // ถ้าย้ายไม่ได้ ให้ใช้ URL เดิม (อาจจะอยู่ใน folder อื่นแล้ว)
+        movedImages.push({
+          url: imagePath, // ใช้ path เดิม
+          is_primary: i === primaryIndex
+        });
       }
     }
 
-    console.log(`✅ [submitDormitory] Uploaded ${uploadedImages.length} images`);
+    console.log(`✅ [submitDormitory] Moved ${movedImages.length} images to dormitory ${dorm_id} folder`);
 
     // 5. Insert รูปภาพลง dormitory_images
-    for (const img of uploadedImages) {
+    for (const img of movedImages) {
       const insertImageQuery = `
         INSERT INTO dormitory_images (dorm_id, image_url, is_primary, upload_date)
         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)

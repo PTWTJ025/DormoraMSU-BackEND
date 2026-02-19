@@ -1,5 +1,7 @@
 // src/controllers/adminDormitoryController.js
 const pool = require("../db");
+const supabaseStorage = require("../services/supabaseStorageService");
+const cleanupOrphanImagesService = require("../services/cleanupOrphanImagesService");
 
 // ฟังก์ชันสำหรับดูรายการหอพักทั้งหมด (สำหรับผู้ดูแลระบบ)
 exports.getAllDormitories = async (req, res) => {
@@ -298,10 +300,29 @@ exports.deleteDormitory = async (req, res) => {
 
     const dormName = dormCheckResult.rows[0].dorm_name;
 
+    // ดึง image_url ทั้งหมดของหอพักเพื่อลบจาก storage
+    const imagesResult = await client.query(
+      `SELECT image_url FROM dormitory_images WHERE dorm_id = $1`,
+      [dormId]
+    );
+
+    // ลบรูปภาพจาก Supabase Storage
+    if (imagesResult.rows.length > 0) {
+      console.log(`🗑️ [deleteDormitory] Deleting ${imagesResult.rows.length} images from storage`);
+      for (const row of imagesResult.rows) {
+        try {
+          await supabaseStorage.deleteImage(row.image_url);
+        } catch (error) {
+          console.error(`⚠️ [deleteDormitory] Failed to delete image from storage:`, row.image_url, error.message);
+          // ไม่ throw error เพื่อให้ลบข้อมูลจาก DB ต่อได้
+        }
+      }
+    }
+
     // ลบข้อมูล amenity mapping
     await client.query(`DELETE FROM dormitory_amenity_mapping WHERE dorm_id = $1`, [dormId]);
 
-    // ลบข้อมูลรูปภาพหอพัก
+    // ลบข้อมูลรูปภาพหอพักจาก DB
     await client.query(`DELETE FROM dormitory_images WHERE dorm_id = $1`, [dormId]);
 
     // ลบข้อมูลหอพัก
@@ -416,6 +437,32 @@ exports.compareDormitories = async (req, res) => {
   } catch (error) {
     console.error("Error comparing dormitories:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการเปรียบเทียบหอพัก" });
+  }
+};
+
+// ลบรูปกำพร้า (orphan images) ที่ไม่ถูกชี้โดย dormitory_images
+exports.cleanupOrphanImages = async (req, res) => {
+  try {
+    const dryRun = req.query.dry_run === "true";
+    const maxDraftAgeHours = parseInt(req.query.max_draft_age_hours, 10) || 24;
+
+    const stats = await cleanupOrphanImagesService.cleanupOrphanImages({
+      maxDraftAgeHours,
+      dryRun,
+    });
+
+    res.json({
+      success: true,
+      message: dryRun ? "Dry run - ไม่มีการลบจริง" : "ลบรูปกำพร้าเรียบร้อยแล้ว",
+      stats,
+    });
+  } catch (error) {
+    console.error("Error cleaning up orphan images:", error);
+    res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดในการลบรูปกำพร้า",
+      error: error.message,
+    });
   }
 };
 

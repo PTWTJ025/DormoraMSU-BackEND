@@ -14,6 +14,9 @@ router.get('/all', verifyFirebaseToken, requireAdmin, adminDormitoryController.g
 // ดูรายการหอพักที่รอการอนุมัติ
 router.get('/pending', verifyFirebaseToken, requireAdmin, adminDormitoryController.getPendingDormitories);
 
+// ลบรูปกำพร้า (ต้องอยู่ก่อน :dormId เพื่อไม่ให้ match ผิด)
+router.get('/cleanup/orphan-images', verifyFirebaseToken, requireAdmin, adminDormitoryController.cleanupOrphanImages);
+
 // ดูรายละเอียดหอพักแต่ละตัว (สำหรับแอดมิน)
 router.get('/:dormId', verifyFirebaseToken, requireAdmin, adminDormitoryController.getDormitoryDetailsByAdmin);
 
@@ -25,6 +28,5 @@ router.put('/:dormId', verifyFirebaseToken, requireAdmin, adminDormitoryControll
 
 // ลบหอพัก
 router.delete('/:dormId', verifyFirebaseToken, requireAdmin, adminDormitoryController.deleteDormitory);
-
 
 module.exports = router; 
