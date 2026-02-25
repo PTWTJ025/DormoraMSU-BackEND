@@ -68,6 +68,38 @@ exports.getPendingDormitories = async (req, res) => {
   }
 };
 
+// ฟังก์ชันสำหรับดูรายการหอพักที่ปฏิเสธ (สำหรับผู้ดูแลระบบ)
+exports.getRejectedDormitories = async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        d.dorm_id,
+        d.dorm_name,
+        d.address,
+        d.approval_status,
+        d.submitted_date,
+        d.updated_at,
+        d.monthly_price,
+        d.daily_price,
+        d.room_type,
+        z.zone_name,
+        (SELECT image_url FROM dormitory_images WHERE dorm_id = d.dorm_id AND is_primary = true LIMIT 1) as main_image_url
+      FROM dormitories d
+      LEFT JOIN zones z ON d.zone_id = z.zone_id
+      WHERE d.approval_status = 'rejected'
+      ORDER BY d.updated_at DESC
+    `;
+
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching rejected dormitories:", error);
+    res
+      .status(500)
+      .json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูลหอพักที่ปฏิเสธ" });
+  }
+};
+
 exports.updateDormitoryApproval = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -208,11 +240,23 @@ exports.updateDormitoryByAdmin = async (req, res) => {
     }
     
     await client.query("BEGIN");
+
+    // ถ้าหอพักเดิมเป็น rejected ให้เปลี่ยนเป็น pending เมื่อบันทึกแก้ไข (ต้องตรวจสอบใหม่)
+    const currentDorm = await client.query(
+      "SELECT approval_status FROM dormitories WHERE dorm_id = $1",
+      [dormId]
+    );
+    if (currentDorm.rows.length > 0 && currentDorm.rows[0].approval_status === "rejected") {
+      await client.query(
+        "UPDATE dormitories SET approval_status = 'pending', updated_at = NOW() WHERE dorm_id = $1",
+        [dormId]
+      );
+    }
     
     // สร้าง dynamic query สำหรับการอัปเดต
     const allowedFields = [
-      'dorm_name', 'address', 'dorm_description', 'latitude', 'longitude',
-      'electricity_price', 'water_price_type', 'water_price',
+      'dorm_name', 'address', 'dorm_description', 'description', 'latitude', 'longitude',
+      'electricity_price_type', 'electricity_price', 'water_price_type', 'water_price',
       'zone_id', 'monthly_price', 'daily_price', 'summer_price', 'deposit', 'room_type'
     ];
     
@@ -246,6 +290,31 @@ exports.updateDormitoryByAdmin = async (req, res) => {
     `;
     
     await client.query(updateQuery, updateValues);
+
+    // อัปเดต amenities ถ้ามีส่งมา (array ของ amenity_name)
+    if (updateData.amenities !== undefined && Array.isArray(updateData.amenities)) {
+      // ลบ mapping เดิม
+      await client.query(
+        `DELETE FROM dormitory_amenity_mapping WHERE dorm_id = $1`,
+        [dormId]
+      );
+      // เพิ่ม mapping ใหม่ (dedupe ชื่อ)
+      const uniqueNames = [...new Set(updateData.amenities)];
+      for (const amenityName of uniqueNames) {
+        if (!amenityName || typeof amenityName !== "string") continue;
+        const amenityResult = await client.query(
+          `SELECT amenity_id FROM dormitory_amenities WHERE amenity_name = $1 LIMIT 1`,
+          [amenityName.trim()]
+        );
+        if (amenityResult.rows.length > 0) {
+          await client.query(
+            `INSERT INTO dormitory_amenity_mapping (dorm_id, amenity_id)
+             VALUES ($1, $2)`,
+            [dormId, amenityResult.rows[0].amenity_id]
+          );
+        }
+      }
+    }
     
     await client.query("COMMIT");
     
@@ -466,3 +535,150 @@ exports.cleanupOrphanImages = async (req, res) => {
   }
 };
 
+// ลบรูปภาพหอพักทีละรูป (เฉพาะผู้ดูแลระบบ)
+exports.deleteDormitoryImageByAdmin = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { dormId, imageId } = req.params;
+    const firebase_uid = req.user.uid;
+
+    // ตรวจสอบสิทธิ์แอดมิน
+    const adminResult = await client.query(
+      "SELECT admin_id, is_active FROM admins WHERE firebase_uid = $1",
+      [firebase_uid]
+    );
+
+    if (adminResult.rows.length === 0) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลผู้ใช้" });
+    }
+
+    const admin = adminResult.rows[0];
+    if (!admin.is_active) {
+      return res.status(403).json({ message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถลบรูปภาพได้" });
+    }
+
+    await client.query("BEGIN");
+
+    // ดึงข้อมูลรูปภาพเพื่อเอา URL ไปลบจาก Storage
+    const imageQuery = `
+      SELECT image_url, is_primary 
+      FROM dormitory_images 
+      WHERE image_id = $1 AND dorm_id = $2
+    `;
+    const imageResult = await client.query(imageQuery, [imageId, dormId]);
+
+    if (imageResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "ไม่พบข้อมูลรูปภาพ" });
+    }
+
+    const { image_url, is_primary } = imageResult.rows[0];
+
+    // ลบจาก Database
+    await client.query(
+      "DELETE FROM dormitory_images WHERE image_id = $1 AND dorm_id = $2",
+      [imageId, dormId]
+    );
+
+    // ลบจาก Storage
+    try {
+      await supabaseStorage.deleteImage(image_url);
+    } catch (storageError) {
+      console.warn("⚠️ Failed to delete image from storage:", image_url, storageError.message);
+      // ยังดำเนินงานต่อเพื่อให้ DB สอดคล้อง
+    }
+
+    // ถ้าลบรูปที่เป็น primary ไป ให้หารูปใหม่มาเป็น primary (ถ้ามี)
+    if (is_primary) {
+      const nextImageResult = await client.query(
+        "SELECT image_id FROM dormitory_images WHERE dorm_id = $1 ORDER BY upload_date ASC LIMIT 1",
+        [dormId]
+      );
+      if (nextImageResult.rows.length > 0) {
+        await client.query(
+          "UPDATE dormitory_images SET is_primary = true WHERE image_id = $1",
+          [nextImageResult.rows[0].image_id]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+    res.json({ message: "ลบรูปภาพเรียบร้อยแล้ว", image_id: imageId });
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error deleting dormitory image:", error);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในการลบรูปภาพ" });
+  } finally {
+    client.release();
+  }
+};
+
+// เพิ่มรูปภาพหอพัก (เฉพาะผู้ดูแลระบบ)
+exports.addDormitoryImageByAdmin = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { dormId } = req.params;
+    const { image_url, is_primary } = req.body;
+    const firebase_uid = req.user.uid;
+
+    if (!image_url) {
+      return res.status(400).json({ message: "กรุณาระบุ URL ของรูปภาพ" });
+    }
+
+    // ตรวจสอบสิทธิ์แอดมิน
+    const adminResult = await client.query(
+      "SELECT admin_id, is_active FROM admins WHERE firebase_uid = $1",
+      [firebase_uid]
+    );
+
+    if (adminResult.rows.length === 0) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลผู้ใช้" });
+    }
+
+    const admin = adminResult.rows[0];
+    if (!admin.is_active) {
+      return res.status(403).json({ message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถเพิ่มรูปภาพได้" });
+    }
+
+    await client.query("BEGIN");
+
+    // ถ้าตั้งรูปใหม่เป็น primary ให้เอา flag ออกจากรูปเก่า
+    if (is_primary === true || is_primary === 1) {
+      await client.query(
+        "UPDATE dormitory_images SET is_primary = false WHERE dorm_id = $1",
+        [dormId]
+      );
+    }
+
+    // ย้ายรูปจาก drafts ไปยัง dormitory folder (ถ้าเป็นรูปใหม่)
+    let finalImageUrl = image_url;
+    try {
+        finalImageUrl = await supabaseStorage.moveImageToDormitoryFolder(image_url, dormId);
+    } catch (moveError) {
+        console.warn("⚠️ Failed to move image to dormitory folder:", moveError.message);
+        // ใช้ URL เดิมถ้าเดี๋ยวย้ายไม่ได้
+    }
+
+    const insertQuery = `
+      INSERT INTO dormitory_images (dorm_id, image_url, is_primary, upload_date)
+      VALUES ($1, $2, $3, NOW())
+      RETURNING image_id
+    `;
+    const insertResult = await client.query(insertQuery, [dormId, finalImageUrl, is_primary || false]);
+
+    await client.query("COMMIT");
+    res.status(201).json({ 
+      message: "เพิ่มรูปภาพเรียบร้อยแล้ว", 
+      image_id: insertResult.rows[0].image_id,
+      image_url: finalImageUrl 
+    });
+
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error adding dormitory image:", error);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในการเพิ่มรูปภาพ" });
+  } finally {
+    client.release();
+  }
+};

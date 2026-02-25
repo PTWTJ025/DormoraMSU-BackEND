@@ -15,6 +15,8 @@ const dormitoryRoutes = require('./routes/dormitoryRoutes');
 const zoneRoutes = require('./routes/zoneRoutes');
 const adminDormitoryRoutes = require('./routes/adminDormitoryRoutes');
 const submissionRoutes = require('./routes/submissionRoutes'); // ระบบรับข้อมูลจากฟอร์ม
+const statsRoutes = require('./routes/statsRoutes'); // สถิติผู้เข้าชม
+
 
 // ===== Routes ที่ไม่ใช้แล้วในระบบใหม่ =====
 /*
@@ -42,7 +44,9 @@ app.use('/api/api/auth', authRoutes); // เพิ่ม route สำหรั�
 app.use('/api/dormitories', dormitoryRoutes); // Public API สำหรับดูหอพัก
 app.use('/api/zones', zoneRoutes); // Public API สำหรับดูโซน
 app.use('/api/submissions', submissionRoutes); // Public API สำหรับส่งข้อมูลหอพัก
+app.use('/api/stats', statsRoutes); // Public API สำหรับสถิติ
 app.use('/api/admin/dormitories', adminDormitoryRoutes); // Admin API
+
 app.use('/api/admin/submissions', adminDormitoryRoutes); // Alias: submissions = dormitories ที่รออนุมัติ
 
 // ===== Routes ที่ไม่ใช้แล้วในระบบใหม่ =====
