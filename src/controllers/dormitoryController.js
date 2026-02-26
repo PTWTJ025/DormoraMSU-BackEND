@@ -301,6 +301,144 @@ exports.getDormitoryImages = async (req, res) => {
   }
 };
 
+// หอพักที่คล้ายกัน (อิงโซน/ราคา/ประเภทห้อง/amenities)
+exports.getSimilarDormitories = async (req, res) => {
+  try {
+    const { dormId } = req.params;
+    const limitParam = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(limitParam)
+      ? Math.min(Math.max(limitParam, 1), 50)
+      : 10;
+
+    // 1) เอาหอหลัก (ต้อง approved)
+    const baseDormQuery = `
+      SELECT dorm_id, zone_id, monthly_price, daily_price, room_type
+      FROM dormitories
+      WHERE dorm_id = $1 AND approval_status = 'approved'
+    `;
+    const baseDormResult = await pool.query(baseDormQuery, [dormId]);
+    if (baseDormResult.rows.length === 0) {
+      return res.status(404).json({ message: "Dormitory not found" });
+    }
+    const baseDorm = baseDormResult.rows[0];
+
+    // 2) คำนวนความคล้ายแบบง่าย:
+    // - โซนเดียวกัน (hard filter)
+    // - room_type ตรงกันได้แต้ม
+    // - ราคาใกล้กันได้แต้ม (ใช้ monthly ถ้ามี ไม่งั้น daily)
+    // - amenities overlap ได้แต้ม
+    const query = `
+      WITH base_amenities AS (
+        SELECT amenity_id
+        FROM dormitory_amenity_mapping
+        WHERE dorm_id = $1
+      ),
+      candidate AS (
+        SELECT
+          d.dorm_id,
+          d.dorm_name,
+          d.address,
+          d.description,
+          d.latitude,
+          d.longitude,
+          d.zone_id,
+          z.zone_name,
+          d.monthly_price,
+          d.daily_price,
+          d.summer_price,
+          d.deposit,
+          d.room_type,
+          d.electricity_price,
+          d.water_price_type,
+          d.water_price,
+          d.contact_name,
+          d.contact_phone,
+          d.contact_email,
+          d.line_id,
+          (
+            SELECT image_url FROM dormitory_images
+            WHERE dorm_id = d.dorm_id
+            ORDER BY is_primary DESC, upload_date DESC, image_id ASC
+            LIMIT 1
+          ) AS main_image_url,
+          COALESCE((
+            SELECT COUNT(*)
+            FROM dormitory_amenity_mapping dam
+            WHERE dam.dorm_id = d.dorm_id
+          ), 0) AS amenities_count,
+          COALESCE((
+            SELECT COUNT(*)
+            FROM dormitory_images di
+            WHERE di.dorm_id = d.dorm_id
+          ), 0) AS images_count,
+          COALESCE((
+            SELECT COUNT(*)
+            FROM dormitory_amenity_mapping dam
+            WHERE dam.dorm_id = d.dorm_id
+              AND dam.amenity_id IN (SELECT amenity_id FROM base_amenities)
+          ), 0) AS amenity_overlap
+        FROM dormitories d
+        LEFT JOIN zones z ON d.zone_id = z.zone_id
+        WHERE d.approval_status = 'approved'
+          AND d.dorm_id <> $1
+          AND d.zone_id = $2
+      )
+      SELECT
+        c.*,
+        0 AS avg_rating,
+        0 AS review_count,
+        (
+          -- price similarity: ยิ่งใกล้กันยิ่งได้แต้ม (0..1) * 0.4
+          (
+            CASE
+              WHEN $3 IS NOT NULL AND c.monthly_price IS NOT NULL AND c.monthly_price > 0 AND $3 > 0
+                THEN (1.0 / (1.0 + (ABS(c.monthly_price - $3) / GREATEST($3, 1))))
+              WHEN $4 IS NOT NULL AND c.daily_price IS NOT NULL AND c.daily_price > 0 AND $4 > 0
+                THEN (1.0 / (1.0 + (ABS(c.daily_price - $4) / GREATEST($4, 1))))
+              ELSE 0
+            END
+          ) * 0.4
+          +
+          -- room_type match * 0.2
+          (CASE WHEN $5 IS NOT NULL AND c.room_type = $5 THEN 1 ELSE 0 END) * 0.2
+          +
+          -- amenity overlap: ยิ่งซ้ำกันยิ่งได้แต้ม * 0.3
+          (LEAST(c.amenity_overlap, 10) / 10.0) * 0.3
+          +
+          -- richness (images/amenities) * 0.1
+          (LEAST(c.amenities_count, 20) / 20.0) * 0.05
+          +
+          (LEAST(c.images_count, 20) / 20.0) * 0.05
+        ) AS similarity_score
+      FROM candidate c
+      ORDER BY
+        similarity_score DESC,
+        c.amenity_overlap DESC,
+        c.amenities_count DESC,
+        c.images_count DESC,
+        c.dorm_id DESC
+      LIMIT $6
+    `;
+
+    const values = [
+      dormId,
+      baseDorm.zone_id,
+      baseDorm.monthly_price,
+      baseDorm.daily_price,
+      baseDorm.room_type,
+      limit,
+    ];
+
+    const result = await pool.query(query, values);
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error fetching similar dormitories:", error);
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
+  }
+};
+
 // ===== ฟังก์ชันที่ไม่ใช้แล้วในระบบใหม่ =====
 
 /*

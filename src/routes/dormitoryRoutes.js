@@ -31,6 +31,9 @@ router.get("/compare", dormitoryController.compareDormitories);
 // กรองหอพัก (ต้องอยู่ก่อน /:dormId)
 router.get("/filter", dormitoryController.filterDormitories);
 
+// หอพักที่คล้ายกัน (ต้องอยู่ก่อน /:dormId)
+router.get("/:dormId/similar", dormitoryController.getSimilarDormitories);
+
 // ดึงข้อมูลหอพักตาม ID
 router.get("/:dormId", dormitoryController.getDormitoryById);
 
