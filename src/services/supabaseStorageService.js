@@ -7,7 +7,7 @@ const supabase = createClient(
 );
 
 // Upload image to Supabase Storage
-// เก็บรูปตามโครงสร้าง: dormitory-images/{dormId}/{fileName}
+// เก็บรูปตามโครงสร้าง: dormitory-images/dorms/{dormId}/{fileName}
 exports.uploadImage = async (file, dormId) => {
   try {
     if (!dormId) {
@@ -15,7 +15,7 @@ exports.uploadImage = async (file, dormId) => {
     }
 
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}-${file.originalname}`;
-    const filePath = `${dormId}/${fileName}`; // เก็บใน folder ตาม dormId
+    const filePath = `dorms/${dormId}/${fileName}`; // เก็บใน dorms/{dormId}/
     
     const { data, error } = await supabase.storage
       .from('dormitory-images')
@@ -93,8 +93,8 @@ exports.uploadMultipleImages = async (files, dormId) => {
   }
 };
 
-// Move image from dorm-drafts/ to {dormId}/ folder
-// Frontend อัปโหลดรูปไป dorm-drafts/ ก่อน แล้ว Backend จะย้ายไป {dormId}/ หลังจากสร้าง dormitory
+// Move image from dorm-drafts/ to dorms/{dormId}/ folder
+// Frontend อัปโหลดรูปไป dorm-drafts/ ก่อน แล้ว Backend จะย้ายไป dorms/{dormId}/ หลังจากสร้าง dormitory
 exports.moveImageToDormitoryFolder = async (imagePath, dormId) => {
   try {
     if (!dormId) {
@@ -125,7 +125,7 @@ exports.moveImageToDormitoryFolder = async (imagePath, dormId) => {
 
     // ดึงชื่อไฟล์จาก sourcePath
     const fileName = sourcePath.split('/').pop();
-    const destinationPath = `${dormId}/${fileName}`;
+    const destinationPath = `dorms/${dormId}/${fileName}`;
 
     // ดาวน์โหลดไฟล์จาก source path
     const { data: fileData, error: downloadError } = await supabase.storage

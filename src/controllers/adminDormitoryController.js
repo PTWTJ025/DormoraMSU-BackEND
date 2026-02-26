@@ -315,6 +315,41 @@ exports.updateDormitoryByAdmin = async (req, res) => {
         }
       }
     }
+
+    // อัปเดตรูปภาพ (images = array ของ image_url ที่ควรเหลืออยู่ทั้งหมด)
+    if (updateData.images !== undefined && Array.isArray(updateData.images)) {
+      const currentImages = await client.query(
+        `SELECT image_url FROM dormitory_images WHERE dorm_id = $1`,
+        [dormId]
+      );
+      const urlsToKeep = new Set(
+        updateData.images.map((u) => (typeof u === "string" ? u.trim() : "")).filter(Boolean)
+      );
+      // ลบรูปที่ user เอาออก (ลบจาก storage ด้วย)
+      for (const row of currentImages.rows) {
+        if (!urlsToKeep.has(row.image_url)) {
+          try {
+            await supabaseStorage.deleteImage(row.image_url);
+          } catch (err) {
+            console.warn("⚠️ Failed to delete image from storage:", row.image_url, err.message);
+          }
+        }
+      }
+      // ลบแถวเดิมทั้งหมดของหอนี้
+      await client.query(`DELETE FROM dormitory_images WHERE dorm_id = $1`, [dormId]);
+      // เพิ่มแถวใหม่ตามรายการที่ส่งมา (รูปแรก = is_primary)
+      const primaryIndex = updateData.primary_image_index != null
+        ? parseInt(updateData.primary_image_index, 10)
+        : 0;
+      const imageUrls = updateData.images.filter((u) => typeof u === "string" && u.trim());
+      for (let i = 0; i < imageUrls.length; i++) {
+        await client.query(
+          `INSERT INTO dormitory_images (dorm_id, image_url, is_primary, upload_date)
+           VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
+          [dormId, imageUrls[i].trim(), i === primaryIndex]
+        );
+      }
+    }
     
     await client.query("COMMIT");
     
