@@ -3,6 +3,7 @@
 // รัน: node scripts/cleanup-orphan-images.js [--dry-run] [--max-draft-age=24]
 
 require("dotenv").config();
+const logger = require("../src/logger");
 const cleanupService = require("../src/services/cleanupOrphanImagesService");
 
 const args = process.argv.slice(2);
@@ -12,18 +13,15 @@ const maxDraftAgeHours = maxAgeArg
   ? parseInt(maxAgeArg.split("=")[1], 10) || 24
   : 24;
 
-console.log("🧹 Cleanup Orphan Images");
-console.log("  dryRun:", dryRun);
-console.log("  maxDraftAgeHours:", maxDraftAgeHours);
-console.log("");
+logger.info("Cleanup Orphan Images", { dryRun, maxDraftAgeHours });
 
 cleanupService
   .cleanupOrphanImages({ maxDraftAgeHours, dryRun })
   .then((stats) => {
-    console.log("\n📊 Result:", stats);
+    logger.info("Cleanup result", stats);
     process.exit(0);
   })
   .catch((err) => {
-    console.error(err);
+    logger.error("Cleanup failed", { error: err.message });
     process.exit(1);
   });

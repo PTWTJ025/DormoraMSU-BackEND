@@ -1,5 +1,6 @@
 // Supabase Storage Service
 const { createClient } = require('@supabase/supabase-js');
+const logger = require('../logger');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -25,7 +26,7 @@ exports.uploadImage = async (file, dormId) => {
       });
       
     if (error) {
-      console.error('Supabase upload error:', error);
+      logger.error('Supabase upload error:', error);
       throw error;
     }
     
@@ -34,11 +35,11 @@ exports.uploadImage = async (file, dormId) => {
       .from('dormitory-images')
       .getPublicUrl(filePath);
       
-    console.log(`✅ Image uploaded successfully to dormitory ${dormId}:`, publicUrl);
+    logger.debug('Image uploaded', { dormId, publicUrl });
     return publicUrl;
     
   } catch (error) {
-    console.error('Error uploading image:', error);
+    logger.error('Error uploading image:', error);
     throw error;
   }
 };
@@ -65,15 +66,15 @@ exports.deleteImage = async (imageUrl) => {
       .remove([filePath]);
       
     if (error) {
-      console.error('Supabase delete error:', error);
+      logger.error('Supabase delete error:', error);
       throw error;
     }
     
-    console.log('✅ Image deleted successfully:', filePath);
+    logger.debug('Image deleted', { filePath });
     return true;
     
   } catch (error) {
-    console.error('Error deleting image:', error);
+    logger.error('Error deleting image:', error);
     throw error;
   }
 };
@@ -88,7 +89,7 @@ exports.uploadMultipleImages = async (files, dormId) => {
     const imageUrls = await Promise.all(uploadPromises);
     return imageUrls;
   } catch (error) {
-    console.error('Error uploading multiple images:', error);
+    logger.error('Error uploading multiple images:', error);
     throw error;
   }
 };
@@ -133,7 +134,7 @@ exports.moveImageToDormitoryFolder = async (imagePath, dormId) => {
       .download(sourcePath);
 
     if (downloadError) {
-      console.error('Error downloading file from dorm-drafts:', downloadError);
+      logger.error('Error downloading file from dorm-drafts:', downloadError);
       throw downloadError;
     }
 
@@ -160,7 +161,7 @@ exports.moveImageToDormitoryFolder = async (imagePath, dormId) => {
       });
 
     if (uploadError) {
-      console.error('Error uploading file to dormitory folder:', uploadError);
+      logger.error('Error uploading file to dormitory folder:', uploadError);
       throw uploadError;
     }
 
@@ -171,7 +172,7 @@ exports.moveImageToDormitoryFolder = async (imagePath, dormId) => {
         .remove([sourcePath]);
       
       if (deleteError) {
-        console.warn('Warning: Failed to delete source file from dorm-drafts:', deleteError);
+        logger.warn('Failed to delete source file from dorm-drafts', { error: deleteError.message });
         // ไม่ throw error เพราะไฟล์ใหม่ถูกอัปโหลดสำเร็จแล้ว
       }
     }
@@ -181,11 +182,11 @@ exports.moveImageToDormitoryFolder = async (imagePath, dormId) => {
       .from('dormitory-images')
       .getPublicUrl(destinationPath);
 
-    console.log(`✅ Image moved from ${sourcePath} to ${destinationPath}`);
+    logger.debug('Image moved', { sourcePath, destinationPath });
     return publicUrl;
 
   } catch (error) {
-    console.error('Error moving image to dormitory folder:', error);
+    logger.error('Error moving image to dormitory folder:', error);
     throw error;
   }
 };

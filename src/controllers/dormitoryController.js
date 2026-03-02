@@ -3,6 +3,7 @@
 // ระบบใหม่ไม่มี owner functions, เฉพาะ public API
 
 const pool = require("../db");
+const logger = require("../logger");
 
 // ===== Public API Functions (ยังใช้ได้) =====
 
@@ -39,7 +40,7 @@ exports.searchDormNames = async (req, res) => {
 
     res.json(items);
   } catch (error) {
-    console.error("Error searching dorm names:", error);
+    logger.error("Error searching dorm names:", error);
     res
       .status(500)
       .json({
@@ -57,7 +58,7 @@ exports.getAllZones = async (req, res) => {
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching zones:", error);
+    logger.error("Error fetching zones:", error);
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
@@ -79,7 +80,7 @@ exports.getAllAmenities = async (req, res) => {
 
     res.json(amenities);
   } catch (error) {
-    console.error("Error fetching amenities:", error);
+    logger.error("Error fetching amenities:", error);
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
@@ -152,7 +153,7 @@ exports.getDormitoryById = async (req, res) => {
 
     res.json(response);
   } catch (error) {
-    console.error("Error fetching dormitory details:", error);
+    logger.error("Error fetching dormitory details:", error);
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
@@ -205,7 +206,7 @@ exports.getRecommendedDormitories = async (req, res) => {
     const result = await pool.query(query, values);
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching recommended dormitories:", error);
+    logger.error("Error fetching recommended dormitories:", error);
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
@@ -240,7 +241,7 @@ exports.getLatestDormitories = async (req, res) => {
     const result = await pool.query(query, values);
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching latest dormitories:", error);
+    logger.error("Error fetching latest dormitories:", error);
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
@@ -271,7 +272,7 @@ exports.getAllApprovedDormitories = async (req, res) => {
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching all approved dormitories:", error);
+    logger.error("Error fetching all approved dormitories:", error);
     res
       .status(500)
       .json({
@@ -294,7 +295,7 @@ exports.getDormitoryImages = async (req, res) => {
     const result = await pool.query(query, [dormId]);
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching dormitory images:", error);
+    logger.error("Error fetching dormitory images:", error);
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
@@ -432,7 +433,7 @@ exports.getSimilarDormitories = async (req, res) => {
     const result = await pool.query(query, values);
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching similar dormitories:", error);
+    logger.error("Error fetching similar dormitories:", error);
     res
       .status(500)
       .json({ message: "Internal Server Error", error: error.message });
@@ -481,7 +482,7 @@ exports.compareDormitories = async (req, res) => {
       return res.status(400).json({ message: "dormIds/ids ไม่ถูกต้อง" });
     }
 
-    console.log("🔍 [compareDormitories] Comparing dormitories:", idsArray);
+    logger.debug("compareDormitories: comparing dormitories", { idsArray });
 
     // Query ข้อมูลหอพักทั้งหมดที่ต้องการเปรียบเทียบ (เฉพาะที่ approved)
     const dormQuery = `
@@ -553,14 +554,10 @@ exports.compareDormitories = async (req, res) => {
       amenities: amenitiesByDorm[dorm.dorm_id] || [],
     }));
 
-    console.log(
-      "✅ [compareDormitories] Returning",
-      response.length,
-      "dormitories",
-    );
+    logger.debug("compareDormitories: returning", { count: response.length });
     res.json(response);
   } catch (error) {
-    console.error("Error comparing dormitories:", error);
+    logger.error("Error comparing dormitories:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการเปรียบเทียบหอพัก" });
   }
 };
@@ -579,7 +576,7 @@ exports.filterDormitories = async (req, res) => {
       offset = 0,
     } = req.query;
 
-    console.log("🔍 [filterDormitories] Filter params:", req.query);
+    logger.debug("filterDormitories: filter params", req.query);
 
     let whereConditions = ["d.approval_status = 'approved'"];
     let queryParams = [];
@@ -657,19 +654,14 @@ exports.filterDormitories = async (req, res) => {
     queryParams.push(parseInt(limit));
     queryParams.push(parseInt(offset));
 
-    console.log("📊 [filterDormitories] Executing query:", query);
-    console.log("📊 [filterDormitories] Query params:", queryParams);
+    logger.debug("filterDormitories: executing query", { query, queryParams });
 
     const result = await pool.query(query, queryParams);
 
-    console.log(
-      "✅ [filterDormitories] Found",
-      result.rows.length,
-      "dormitories",
-    );
+    logger.debug("filterDormitories: found", { count: result.rows.length });
     res.json(result.rows);
   } catch (error) {
-    console.error("Error filtering dormitories:", error);
+    logger.error("Error filtering dormitories:", error);
     res
       .status(500)
       .json({ message: "เกิดข้อผิดพลาดในการกรองหอพัก", error: error.message });

@@ -2,6 +2,7 @@
 const admin = require('firebase-admin');
 const path = require('path');
 require('dotenv').config();
+const logger = require('../logger');
 
 // Load Firebase Service Account Key for Authentication only
 let serviceAccount;
@@ -10,10 +11,9 @@ let serviceAccount;
 if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
   try {
     serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
-    console.log('Firebase service account loaded from environment variable');
-    console.log('Project ID:', serviceAccount.project_id);
+    logger.info('Firebase service account loaded from environment variable', { projectId: serviceAccount.project_id });
   } catch (error) {
-    console.error('Error parsing FIREBASE_SERVICE_ACCOUNT_KEY environment variable:', error);
+    logger.error('Error parsing FIREBASE_SERVICE_ACCOUNT_KEY environment variable:', error);
     throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT_KEY format');
   }
 } else {
@@ -22,12 +22,10 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
   try {
     const keyPath = path.resolve(process.cwd(), serviceAccountPath);
     serviceAccount = require(keyPath);
-    console.log('Firebase service account loaded from file:', keyPath);
-    console.log('Project ID:', serviceAccount.project_id);
+    logger.info('Firebase service account loaded from file', { path: keyPath, projectId: serviceAccount.project_id });
   } catch (error) {
-    console.error('Error loading Firebase service account key from file:', error);
-    console.error('Attempted path:', path.resolve(process.cwd(), serviceAccountPath));
-    console.error('Please set FIREBASE_SERVICE_ACCOUNT_KEY environment variable or provide the key file');
+    logger.error('Error loading Firebase service account key from file:', error);
+    logger.error('Attempted path', { path: path.resolve(process.cwd(), serviceAccountPath) });
     throw new Error('Firebase service account key not found');
   }
 }
@@ -42,9 +40,8 @@ if (!admin.apps.length) {
     // บังคับใช้ service account credential แทน metadata server
     serviceAccountId: serviceAccount.client_email
   });
-  console.log('✅ Firebase Admin SDK initialized successfully (Authentication only)');
-  console.log('📦 Storage: Using Cloudflare R2 instead of Firebase Storage');
-  console.log('🔑 Using service account:', serviceAccount.client_email);
+  logger.info('Firebase Admin SDK initialized (Authentication only)');
+  logger.info('Storage: Cloudflare R2', { serviceAccount: serviceAccount.client_email });
 }
 
 // Export the default app

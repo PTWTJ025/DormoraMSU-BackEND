@@ -1,6 +1,7 @@
 // src/app.js
 require('dotenv').config();
 
+const logger = require('./logger');
 const admin = require('./config/firebase');
 const http = require('http');
 const express = require('express');
@@ -65,11 +66,10 @@ createPresenceServer(server);
 
 // Start Server
 server.listen(PORT, () => {
-  console.log(`DormRoomaroo API listening on port ${PORT}`);
-  console.log(`🏠 New System: Public form + Admin approval`);
-  console.log(`📊 Database: Supabase PostgreSQL`);
-  console.log(`📁 Storage: Supabase Storage`);
-  console.log(`📡 WebSocket: ws://localhost:${PORT}/ws`);
+  logger.info(`DormRoomaroo API listening on port ${PORT}`);
+  logger.info("New System: Public form + Admin approval");
+  logger.info("Database: Supabase PostgreSQL | Storage: Supabase Storage");
+  logger.info(`WebSocket: ws://localhost:${PORT}/ws`);
 });
 
 module.exports = app;

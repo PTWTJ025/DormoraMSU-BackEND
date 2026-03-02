@@ -1,5 +1,6 @@
 // src/middleware/authMiddleware.js
-const firebaseAdmin = require('../config/firebase'); // Use the default app
+const firebaseAdmin = require('../config/firebase');
+const logger = require('../logger'); // Use the default app
 const pool = require('../db');
 
 async function verifyFirebaseToken(req, res, next) {
@@ -15,16 +16,14 @@ async function verifyFirebaseToken(req, res, next) {
   // Avoid logging tokens
   
   try {
-    console.log('Verifying Firebase ID token...');
+    logger.debug('Verifying Firebase ID token');
     // เพิ่ม checkRevoked: false เพื่อลดการเรียก metadata server
     const decodedToken = await firebaseAdmin.auth().verifyIdToken(idToken, false);
-    console.log('Token verified successfully for user:', decodedToken.uid);
+    logger.debug('Token verified', { uid: decodedToken.uid });
     req.user = decodedToken; // เก็บ decoded token ไว้ใน req.user
     next(); // ไปยัง Middleware หรือ Controller ถัดไป
   } catch (error) {
-    console.error('Error verifying Firebase ID token:', error);
-    console.error('Error code:', error.code);
-    console.error('Error message:', error.message);
+    logger.error('Error verifying Firebase ID token', { code: error.code, message: error.message });
     
     // แจ้ง Error ตามประเภท เช่น expired token
     if (error.code === 'auth/id-token-expired') {
@@ -81,7 +80,7 @@ async function requireAdmin(req, res, next) {
     // ถ้าเป็นแอดมิน ให้ดำเนินการต่อ
     next();
   } catch (error) {
-    console.error('Error checking admin privileges:', error);
+    logger.error('Error checking admin privileges:', error);
     return res.status(500).json({ error: 'Internal Server Error', details: error.message });
   }
 }

@@ -2,6 +2,7 @@
 // ระบบใหม่: ส่งข้อมูลตรงเข้า dormitories table (status = pending)
 
 const pool = require("../db");
+const logger = require("../logger");
 const supabaseStorage = require("../services/supabaseStorageService");
 
 // ===== PUBLIC FORM SUBMISSION =====
@@ -57,7 +58,7 @@ exports.submitDormitory = async (req, res) => {
     // ใช้ term_price ถ้ามี หรือใช้ summer_price
     const finalSummerPrice = term_price || summer_price;
 
-    console.log('📝 [submitDormitory] Received JSON data:', {
+    logger.debug('submitDormitory: received', {
       accommodation_type,
       dorm_name,
       address,
@@ -119,7 +120,7 @@ exports.submitDormitory = async (req, res) => {
     // ถ้ามี error ให้ return
     if (Object.keys(errors).length > 0) {
       await client.query('ROLLBACK');
-      console.log('❌ [submitDormitory] Validation errors:', errors);
+      logger.warn('submitDormitory: validation errors', { errors });
       return res.status(400).json({
         success: false,
         message: "ข้อมูลไม่ครบถ้วนหรือไม่ถูกต้อง",
@@ -165,7 +166,7 @@ exports.submitDormitory = async (req, res) => {
     const dormResult = await client.query(insertDormQuery, dormValues);
     const dorm_id = dormResult.rows[0].dorm_id;
 
-    console.log('✅ [submitDormitory] Created dorm_id:', dorm_id);
+    logger.info('submitDormitory: created', { dorm_id });
 
     // 4. ย้ายรูปภาพจาก dorm-drafts/ ไป {dormId}/ folder
     // Frontend อัปโหลดรูปไป dorm-drafts/ ก่อน แล้ว Backend จะย้ายไป {dormId}/ หลังจากสร้าง dormitory
@@ -174,7 +175,7 @@ exports.submitDormitory = async (req, res) => {
 
     for (let i = 0; i < images.length; i++) {
       const imagePath = images[i]; // path หรือ URL จาก Frontend
-      console.log(`📸 [submitDormitory] Moving image ${i + 1}/${images.length} from dorm-drafts/ to dormitory ${dorm_id}`);
+      logger.debug('submitDormitory: moving image', { index: i + 1, total: images.length, dorm_id });
       
       try {
         // ย้ายรูปจาก dorm-drafts/ ไป {dormId}/
@@ -185,7 +186,7 @@ exports.submitDormitory = async (req, res) => {
           is_primary: i === primaryIndex
         });
       } catch (error) {
-        console.error(`❌ [submitDormitory] Failed to move image ${i}:`, error.message);
+        logger.warn('submitDormitory: failed to move image', { index: i, error: error.message });
         // ถ้าย้ายไม่ได้ ให้ใช้ URL เดิม (อาจจะอยู่ใน folder อื่นแล้ว)
         movedImages.push({
           url: imagePath, // ใช้ path เดิม
@@ -194,7 +195,7 @@ exports.submitDormitory = async (req, res) => {
       }
     }
 
-    console.log(`✅ [submitDormitory] Moved ${movedImages.length} images to dormitory ${dorm_id} folder`);
+    logger.debug('submitDormitory: moved images', { count: movedImages.length, dorm_id });
 
     // 5. Insert รูปภาพลง dormitory_images
     for (const img of movedImages) {
@@ -217,7 +218,7 @@ exports.submitDormitory = async (req, res) => {
           amenitiesArray = amenities;
         }
         
-        console.log('🏠 [submitDormitory] Processing amenities:', amenitiesArray);
+        logger.debug('submitDormitory: processing amenities', { amenities: amenitiesArray });
         
         if (Array.isArray(amenitiesArray) && amenitiesArray.length > 0) {
           for (const amenityName of amenitiesArray) {
@@ -240,18 +241,18 @@ exports.submitDormitory = async (req, res) => {
               `;
               await client.query(insertMappingQuery, [dorm_id, amenity_id]);
             } else {
-              console.warn(`⚠️ [submitDormitory] Amenity not found: ${amenityName}`);
+              logger.warn('submitDormitory: amenity not found', { amenityName });
             }
           }
         }
       } catch (e) {
-        console.error("❌ [submitDormitory] Error parsing amenities:", e);
+        logger.error('submitDormitory: error parsing amenities', { error: e.message });
       }
     }
 
     await client.query('COMMIT');
 
-    console.log('🎉 [submitDormitory] Success! dorm_id:', dorm_id);
+    logger.info('submitDormitory: success', { dorm_id });
 
     // 7. ส่ง response กลับ
     res.status(201).json({
@@ -262,7 +263,7 @@ exports.submitDormitory = async (req, res) => {
 
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error("❌ [submitDormitory] Error:", error);
+    logger.error('submitDormitory: error', { error: error.message });
     res.status(500).json({
       success: false,
       message: "เกิดข้อผิดพลาดในการส่งข้อมูล",

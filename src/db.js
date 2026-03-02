@@ -1,11 +1,10 @@
 // src/db.js
 const { Pool } = require('pg');
 require('dotenv').config();
-
-// Avoid printing secrets
+const logger = require('./logger');
 
 if (!process.env.DATABASE_URL) {
-  console.error("Error: DATABASE_URL is not set in .env file.");
+  logger.error("DATABASE_URL is not set in .env file.");
   process.exit(1);
 }
 
@@ -16,7 +15,7 @@ const pool = new Pool({
 // Optional: you can add minimal health logs if needed
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
+  logger.error('Unexpected error on idle client', err);
   process.exit(-1);
 });
 

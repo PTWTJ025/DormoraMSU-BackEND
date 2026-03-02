@@ -3,6 +3,7 @@
 // ไม่มี member/owner registration และ login
 
 const firebaseAdmin = require('../config/firebase');
+const logger = require('../logger');
 const userService = require('../services/userService');
 const pool = require('../db');
 
@@ -51,15 +52,11 @@ exports.adminLogin = async (req, res) => {
       lastLogin: admin.last_login
     };
 
-    console.log('✅ [adminLogin] Admin profile:', {
-      username: admin.username,
-      photo_url_from_db: admin.photo_url,
-      finalPhotoURL: finalPhotoURL
-    });
+    logger.debug("adminLogin: admin profile", { username: admin.username });
 
     res.status(200).json(adminProfile);
   } catch (error) {
-    console.error('Admin login error:', error);
+    logger.error('Admin login error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการเข้าสู่ระบบแอดมิน', error: error.message });
   }
 };
@@ -72,9 +69,7 @@ exports.verifyToken = async (req, res) => {
     const now = new Date();
     const timeLeft = Math.floor((tokenExpiry - now) / 1000);
 
-    console.log(`Token verification successful for UID: ${firebase_uid}`);
-    console.log(`Token expires at: ${tokenExpiry.toISOString()}`);
-    console.log(`Time left: ${timeLeft} seconds`);
+    logger.debug("Token verification", { uid: firebase_uid, timeLeft });
 
     res.json({
       valid: true,
@@ -83,7 +78,7 @@ exports.verifyToken = async (req, res) => {
       timeLeft: timeLeft
     });
   } catch (error) {
-    console.error('Error in token verification endpoint:', error);
+    logger.error('Error in token verification endpoint:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์', error: error.message });
   }
 };
@@ -122,7 +117,7 @@ exports.getAdminProfile = async (req, res) => {
 
     res.status(200).json(adminProfile);
   } catch (error) {
-    console.error('Get admin profile error:', error);
+    logger.error('Get admin profile error:', error);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดในการดึงข้อมูลแอดมิน', error: error.message });
   }
 };

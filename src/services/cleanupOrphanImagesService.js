@@ -2,6 +2,7 @@
 // ลบรูปกำพร้า (orphan images) ที่ไม่ถูกชี้โดย dormitory_images (FK)
 
 const pool = require("../db");
+const logger = require("../logger");
 const supabaseStorage = require("./supabaseStorageService");
 const { createClient } = require("@supabase/supabase-js");
 
@@ -47,7 +48,7 @@ async function listFolder(prefix) {
     .list(prefix, { limit: 1000 });
 
   if (error) {
-    console.error(`Error listing ${prefix}:`, error);
+    logger.error(`Error listing ${prefix}`, { error });
     return { files: [], folders: [] };
   }
 
@@ -102,7 +103,7 @@ exports.cleanupOrphanImages = async (options = {}) => {
 
   try {
     const referencedPaths = await getReferencedPaths();
-    console.log(`📋 [cleanup] Found ${referencedPaths.size} referenced image paths in DB`);
+    logger.debug("cleanup: found referenced paths", { count: referencedPaths.size });
 
     // 1. ลบไฟล์ใน dorm-drafts/ ที่อายุเกินกำหนด
     const { data: draftItems } = await supabase.storage
@@ -126,10 +127,10 @@ exports.cleanupOrphanImages = async (options = {}) => {
             stats.errors.push({ path, error: error.message });
           } else {
             stats.dormDraftsDeleted++;
-            console.log(`🗑️ [cleanup] Deleted old draft: ${path}`);
+            logger.debug("cleanup: deleted old draft", { path });
           }
         } else {
-          console.log(`[dry-run] Would delete old draft: ${path} (age: ${Math.round(ageMs / 3600000)}h)`);
+          logger.debug("cleanup [dry-run]: would delete old draft", { path, ageHours: Math.round(ageMs / 3600000) });
           stats.dormDraftsDeleted++;
         }
       }
@@ -149,18 +150,18 @@ exports.cleanupOrphanImages = async (options = {}) => {
           stats.errors.push({ path: filePath, error: error.message });
         } else {
           stats.orphanDormImagesDeleted++;
-          console.log(`🗑️ [cleanup] Deleted orphan: ${filePath}`);
+          logger.debug("cleanup: deleted orphan", { filePath });
         }
       } else {
-        console.log(`[dry-run] Would delete orphan: ${filePath}`);
+        logger.debug("cleanup [dry-run]: would delete orphan", { filePath });
         stats.orphanDormImagesDeleted++;
       }
     }
 
-    console.log(`✅ [cleanup] Done. Drafts: ${stats.dormDraftsDeleted}, Orphans: ${stats.orphanDormImagesDeleted}`);
+    logger.info("cleanup: done", { drafts: stats.dormDraftsDeleted, orphans: stats.orphanDormImagesDeleted });
     return stats;
   } catch (err) {
-    console.error("❌ [cleanup] Error:", err);
+    logger.error("cleanup: error", { error: err.message });
     stats.errors.push({ error: err.message });
     throw err;
   }

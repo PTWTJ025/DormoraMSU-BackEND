@@ -1,5 +1,6 @@
 const pool = require("../db");
 const { getOnlineCount } = require("../websocket/presenceServer");
+const logger = require("../logger");
 
 /**
  * Get stats: dorm_count (จำนวนหอ) + visitor_count (ผู้เข้าชมสะสม)
@@ -30,7 +31,7 @@ exports.getStats = async (req, res) => {
 
     res.json({ dorm_count, visitor_count });
   } catch (error) {
-    console.error("Error fetching stats:", error);
+    logger.error("Error fetching stats:", error);
     res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
@@ -53,7 +54,7 @@ exports.incrementVisitorCount = async (req, res) => {
     `);
     res.json({ message: "Visitor count incremented" });
   } catch (error) {
-    console.error("Error incrementing visitor count:", error);
+    logger.error("Error incrementing visitor count:", error);
     res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };

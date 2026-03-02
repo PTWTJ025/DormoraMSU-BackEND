@@ -1,4 +1,5 @@
 const { WebSocketServer } = require("ws");
+const logger = require("../logger");
 
 let wss = null;
 
@@ -24,7 +25,7 @@ function createPresenceServer(server) {
     ws.on("error", broadcastOnlineCount);
   });
 
-  console.log("📡 WebSocket Presence: ws://[host]/ws");
+  logger.info("WebSocket Presence ready: /ws");
   return wss;
 }
 

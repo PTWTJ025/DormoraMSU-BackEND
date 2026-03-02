@@ -1,5 +1,6 @@
 // src/controllers/adminDormitoryController.js
 const pool = require("../db");
+const logger = require("../logger");
 const supabaseStorage = require("../services/supabaseStorageService");
 const cleanupOrphanImagesService = require("../services/cleanupOrphanImagesService");
 
@@ -26,7 +27,7 @@ exports.getAllDormitories = async (req, res) => {
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching all dormitories:", error);
+    logger.error("Error fetching all dormitories:", error);
     res
       .status(500)
       .json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูลหอพักทั้งหมด" });
@@ -54,14 +55,13 @@ exports.getPendingDormitories = async (req, res) => {
       ORDER BY d.submitted_date DESC
     `;
 
-    console.log("🔍 [getPendingDormitories] Executing query:", query);
+    logger.debug("getPendingDormitories: executing query", { query });
     const result = await pool.query(query);
-    console.log("📊 [getPendingDormitories] Query result:", result.rows);
-    console.log("📈 [getPendingDormitories] Number of pending dormitories:", result.rows.length);
+    logger.debug("getPendingDormitories: result", { count: result.rows.length });
     
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching pending dormitories:", error);
+    logger.error("Error fetching pending dormitories:", error);
     res
       .status(500)
       .json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูลหอพักที่รอการอนุมัติ" });
@@ -93,7 +93,7 @@ exports.getRejectedDormitories = async (req, res) => {
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
-    console.error("Error fetching rejected dormitories:", error);
+    logger.error("Error fetching rejected dormitories:", error);
     res
       .status(500)
       .json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูลหอพักที่ปฏิเสธ" });
@@ -146,7 +146,7 @@ exports.updateDormitoryApproval = async (req, res) => {
     res.json({ message: "สถานะการอนุมัติหอพักถูกปรับปรุงเรียบร้อยแล้ว" });
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error updating dormitory approval:", error);
+    logger.error("Error updating dormitory approval:", error);
     res
       .status(500)
       .json({ message: "เกิดข้อผิดพลาดในการปรับปรุงสถานะการอนุมัติหอพัก" });
@@ -211,7 +211,7 @@ exports.getDormitoryDetailsByAdmin = async (req, res) => {
     res.json(response);
     
   } catch (error) {
-    console.error("Error fetching dormitory details for admin:", error);
+    logger.error("Error fetching dormitory details for admin:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการดึงข้อมูลรายละเอียดหอพัก" });
   }
 };
@@ -331,7 +331,7 @@ exports.updateDormitoryByAdmin = async (req, res) => {
           try {
             await supabaseStorage.deleteImage(row.image_url);
           } catch (err) {
-            console.warn("⚠️ Failed to delete image from storage:", row.image_url, err.message);
+            logger.warn("⚠️ Failed to delete image from storage:", row.image_url, err.message);
           }
         }
       }
@@ -357,7 +357,7 @@ exports.updateDormitoryByAdmin = async (req, res) => {
     
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error updating dormitory by admin:", error);
+    logger.error("Error updating dormitory by admin:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการอัปเดตข้อมูลหอพัก" });
   } finally {
     client.release();
@@ -412,12 +412,12 @@ exports.deleteDormitory = async (req, res) => {
 
     // ลบรูปภาพจาก Supabase Storage
     if (imagesResult.rows.length > 0) {
-      console.log(`🗑️ [deleteDormitory] Deleting ${imagesResult.rows.length} images from storage`);
+      logger.debug("deleteDormitory: deleting images from storage", { count: imagesResult.rows.length });
       for (const row of imagesResult.rows) {
         try {
           await supabaseStorage.deleteImage(row.image_url);
         } catch (error) {
-          console.error(`⚠️ [deleteDormitory] Failed to delete image from storage:`, row.image_url, error.message);
+          logger.error(`⚠️ [deleteDormitory] Failed to delete image from storage:`, row.image_url, error.message);
           // ไม่ throw error เพื่อให้ลบข้อมูลจาก DB ต่อได้
         }
       }
@@ -440,7 +440,7 @@ exports.deleteDormitory = async (req, res) => {
     });
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error deleting dormitory:", error);
+    logger.error("Error deleting dormitory:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการลบหอพัก" });
   } finally {
     client.release();
@@ -539,7 +539,7 @@ exports.compareDormitories = async (req, res) => {
     res.json(response);
 
   } catch (error) {
-    console.error("Error comparing dormitories:", error);
+    logger.error("Error comparing dormitories:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการเปรียบเทียบหอพัก" });
   }
 };
@@ -561,7 +561,7 @@ exports.cleanupOrphanImages = async (req, res) => {
       stats,
     });
   } catch (error) {
-    console.error("Error cleaning up orphan images:", error);
+    logger.error("Error cleaning up orphan images:", error);
     res.status(500).json({
       success: false,
       message: "เกิดข้อผิดพลาดในการลบรูปกำพร้า",
@@ -619,7 +619,7 @@ exports.deleteDormitoryImageByAdmin = async (req, res) => {
     try {
       await supabaseStorage.deleteImage(image_url);
     } catch (storageError) {
-      console.warn("⚠️ Failed to delete image from storage:", image_url, storageError.message);
+      logger.warn("⚠️ Failed to delete image from storage:", image_url, storageError.message);
       // ยังดำเนินงานต่อเพื่อให้ DB สอดคล้อง
     }
 
@@ -642,7 +642,7 @@ exports.deleteDormitoryImageByAdmin = async (req, res) => {
 
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error deleting dormitory image:", error);
+    logger.error("Error deleting dormitory image:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการลบรูปภาพ" });
   } finally {
     client.release();
@@ -691,7 +691,7 @@ exports.addDormitoryImageByAdmin = async (req, res) => {
     try {
         finalImageUrl = await supabaseStorage.moveImageToDormitoryFolder(image_url, dormId);
     } catch (moveError) {
-        console.warn("⚠️ Failed to move image to dormitory folder:", moveError.message);
+        logger.warn("⚠️ Failed to move image to dormitory folder:", moveError.message);
         // ใช้ URL เดิมถ้าเดี๋ยวย้ายไม่ได้
     }
 
@@ -711,7 +711,7 @@ exports.addDormitoryImageByAdmin = async (req, res) => {
 
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Error adding dormitory image:", error);
+    logger.error("Error adding dormitory image:", error);
     res.status(500).json({ message: "เกิดข้อผิดพลาดในการเพิ่มรูปภาพ" });
   } finally {
     client.release();
