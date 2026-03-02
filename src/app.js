@@ -1,12 +1,14 @@
 // src/app.js
 require('dotenv').config();
 
-// เรียกใช้ Firebase Admin SDK เพื่อให้แน่ใจว่า initialized ตั้งแต่เริ่มต้น
 const admin = require('./config/firebase');
-
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
+const { createPresenceServer } = require('./websocket/presenceServer');
+
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
 // Import Routes ที่ยังใช้ได้ในระบบใหม่
@@ -58,12 +60,16 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/edit-dormitory', editDormitoryRoutes);
 */
 
+// WebSocket Presence (Online count)
+createPresenceServer(server);
+
 // Start Server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`DormRoomaroo API listening on port ${PORT}`);
   console.log(`🏠 New System: Public form + Admin approval`);
   console.log(`📊 Database: Supabase PostgreSQL`);
   console.log(`📁 Storage: Supabase Storage`);
+  console.log(`📡 WebSocket: ws://localhost:${PORT}/ws`);
 });
 
 module.exports = app;
