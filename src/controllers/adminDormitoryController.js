@@ -253,17 +253,17 @@ exports.updateDormitoryByAdmin = async (req, res) => {
       );
     }
     
-    // สร้าง dynamic query สำหรับการอัปเดต
+    // สร้าง dynamic query สำหรับการอัปเดต (รับเฉพาะฟิลด์ที่ตรงกับคอลัมน์ในตาราง dormitories)
     const allowedFields = [
-      'dorm_name', 'address', 'dorm_description', 'description', 'latitude', 'longitude',
+      'dorm_name', 'address', 'description', 'latitude', 'longitude',
       'electricity_price_type', 'electricity_price', 'water_price_type', 'water_price',
       'zone_id', 'monthly_price', 'daily_price', 'summer_price', 'deposit', 'room_type'
     ];
-    
+
     const updateFields = [];
     const updateValues = [];
     let paramCount = 1;
-    
+
     for (const [key, value] of Object.entries(updateData)) {
       if (allowedFields.includes(key) && value !== undefined) {
         updateFields.push(`${key} = $${paramCount}`);
@@ -469,7 +469,7 @@ exports.compareDormitories = async (req, res) => {
         d.dorm_id,
         d.dorm_name,
         d.address,
-        d.dorm_description,
+        d.description,
         d.latitude,
         d.longitude,
         d.zone_id,

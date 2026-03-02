@@ -391,16 +391,16 @@ exports.getSimilarDormitories = async (req, res) => {
           -- price similarity: ยิ่งใกล้กันยิ่งได้แต้ม (0..1) * 0.4
           (
             CASE
-              WHEN $3 IS NOT NULL AND c.monthly_price IS NOT NULL AND c.monthly_price > 0 AND $3 > 0
-                THEN (1.0 / (1.0 + (ABS(c.monthly_price - $3) / GREATEST($3, 1))))
-              WHEN $4 IS NOT NULL AND c.daily_price IS NOT NULL AND c.daily_price > 0 AND $4 > 0
-                THEN (1.0 / (1.0 + (ABS(c.daily_price - $4) / GREATEST($4, 1))))
+              WHEN $3::numeric IS NOT NULL AND c.monthly_price IS NOT NULL AND c.monthly_price > 0 AND $3::numeric > 0
+                THEN (1.0 / (1.0 + (ABS(c.monthly_price - $3::numeric) / GREATEST($3::numeric, 1))))
+              WHEN $4::numeric IS NOT NULL AND c.daily_price IS NOT NULL AND c.daily_price > 0 AND $4::numeric > 0
+                THEN (1.0 / (1.0 + (ABS(c.daily_price - $4::numeric) / GREATEST($4::numeric, 1))))
               ELSE 0
             END
           ) * 0.4
           +
           -- room_type match * 0.2
-          (CASE WHEN $5 IS NOT NULL AND c.room_type = $5 THEN 1 ELSE 0 END) * 0.2
+          (CASE WHEN $5::text IS NOT NULL AND c.room_type = $5::text THEN 1 ELSE 0 END) * 0.2
           +
           -- amenity overlap: ยิ่งซ้ำกันยิ่งได้แต้ม * 0.3
           (LEAST(c.amenity_overlap, 10) / 10.0) * 0.3
