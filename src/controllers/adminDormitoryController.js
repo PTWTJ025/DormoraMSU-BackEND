@@ -3,6 +3,7 @@ const pool = require("../db");
 const logger = require("../logger");
 const supabaseStorage = require("../services/supabaseStorageService");
 const cleanupOrphanImagesService = require("../services/cleanupOrphanImagesService");
+const duplicateCheckService = require("../services/duplicateCheckService");
 
 // ฟังก์ชันสำหรับดูรายการหอพักทั้งหมด (สำหรับผู้ดูแลระบบ)
 exports.getAllDormitories = async (req, res) => {
@@ -152,6 +153,36 @@ exports.updateDormitoryApproval = async (req, res) => {
       .json({ message: "เกิดข้อผิดพลาดในการปรับปรุงสถานะการอนุมัติหอพัก" });
   } finally {
     client.release();
+  }
+};
+
+// เช็คหอที่อาจซ้ำ (เทียบกับหอที่อนุมัติแล้วทั้งหมด) — ไม่แก้ข้อมูล แค่คืนรายการให้แอดมินดู
+exports.getCheckDuplicateDormitories = async (req, res) => {
+  try {
+    const { dormId } = req.params;
+
+    const dormResult = await pool.query(
+      "SELECT dorm_id, dorm_name, address, latitude, longitude FROM dormitories WHERE dorm_id = $1",
+      [dormId]
+    );
+    if (dormResult.rows.length === 0) {
+      return res.status(404).json({ message: "ไม่พบข้อมูลหอพัก" });
+    }
+
+    const currentDorm = dormResult.rows[0];
+    currentDorm.latitude = currentDorm.latitude != null ? Number(currentDorm.latitude) : null;
+    currentDorm.longitude = currentDorm.longitude != null ? Number(currentDorm.longitude) : null;
+
+    const similar = await duplicateCheckService.findSimilarApprovedDormitories(pool, currentDorm);
+
+    res.json({
+      dorm_id: currentDorm.dorm_id,
+      dorm_name: currentDorm.dorm_name,
+      similar_dormitories: similar,
+    });
+  } catch (error) {
+    logger.error("Error checking duplicate dormitories:", error);
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในการเช็คหอที่อาจซ้ำ" });
   }
 };
 

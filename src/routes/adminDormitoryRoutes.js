@@ -20,6 +20,9 @@ router.get('/rejected', verifyFirebaseToken, requireAdmin, adminDormitoryControl
 // ลบรูปกำพร้า (ต้องอยู่ก่อน :dormId เพื่อไม่ให้ match ผิด)
 router.get('/cleanup/orphan-images', verifyFirebaseToken, requireAdmin, adminDormitoryController.cleanupOrphanImages);
 
+// เช็คหอซ้ำ (เทียบกับหอที่อนุมัติแล้ว — ชื่อ/พิกัดคล้ายกัน)
+router.get('/:dormId/check-duplicates', verifyFirebaseToken, requireAdmin, adminDormitoryController.getCheckDuplicateDormitories);
+
 // ดูรายละเอียดหอพักแต่ละตัว (สำหรับแอดมิน)
 router.get('/:dormId', verifyFirebaseToken, requireAdmin, adminDormitoryController.getDormitoryDetailsByAdmin);
 
